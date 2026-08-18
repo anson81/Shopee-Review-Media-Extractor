@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Shopee Review Media Extractor</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Review Media Extractor</h1>
+      <a id="settings" href="#" title="Settings">Settings</a>
+    </header>
+
+    <main>
+      <p id="not-product" class="warn" hidden>
+        Open a Shopee product page first — this works on the product page, not on
+        search results or Seller Centre.
+      </p>
+
+      <section>
+        <label class="field">
+          <span>Review pages</span>
+          <input id="pages" type="text" value="all" placeholder="all, 1-20, or 5" />
+          <small>Type <code>all</code> for every page, or a range like <code>1-20</code>.</small>
+        </label>
+      </section>
+
+      <section>
+        <h2>Review media</h2>
+        <label class="check"><input id="review-images" type="checkbox" checked /><span>Review images</span></label>
+        <label class="check"><input id="review-videos" type="checkbox" checked /><span>Review videos</span></label>
+      </section>
+
+      <section>
+        <h2>Product content</h2>
+        <label class="check"><input id="main-images" type="checkbox" /><span>Main images</span></label>
+        <label class="check"><input id="variant-images" type="checkbox" /><span>Variant images</span></label>
+        <label class="check"><input id="product-videos" type="checkbox" /><span>Product videos</span></label>
+        <label class="check"><input id="description" type="checkbox" /><span>Description content</span></label>
+      </section>
+
+      <section>
+        <label class="field">
+          <span>Filename style</span>
+          <select id="style">
+            <option value="page-review-type">Page, review, type</option>
+            <option value="date-buyer">Date, buyer</option>
+            <option value="sequential">Sequential</option>
+          </select>
+        </label>
+      </section>
+
+      <button id="find" type="button" class="primary">Find media</button>
+      <button id="stop" type="button" hidden>Stop</button>
+
+      <p id="status" class="status"></p>
+      <p id="folder-note" class="note" hidden></p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

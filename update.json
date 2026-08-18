@@ -1,0 +1,29 @@
+{
+    "version":  "1.0.0",
+    "notes":  [
+                  "First release."
+              ],
+    "files":  [
+                  "background/background.js",
+                  "content/api.js",
+                  "content/content.js",
+                  "content/interceptor.js",
+                  "content/picker.css",
+                  "content/picker.js",
+                  "icons/icon128.png",
+                  "icons/icon16.png",
+                  "icons/icon48.png",
+                  "lib/csv.js",
+                  "lib/naming.js",
+                  "lib/zip.js",
+                  "manifest.json",
+                  "offscreen/offscreen.html",
+                  "offscreen/offscreen.js",
+                  "options/options.css",
+                  "options/options.html",
+                  "options/options.js",
+                  "popup/popup.css",
+                  "popup/popup.html",
+                  "popup/popup.js"
+              ]
+}

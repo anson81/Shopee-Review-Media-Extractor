@@ -1,0 +1,215 @@
+/*
+ * Styling for the in-page picker.
+ *
+ * Every selector is prefixed .srme- and every rule is scoped under
+ * #srme-root. This modal is injected into Shopee's own page, which has its own
+ * global stylesheet, its own resets and its own opinions about `button`. A
+ * bare `.grid` or a bare `button` rule here would either be overridden by the
+ * page or, worse, would restyle the page.
+ *
+ * all: initial on the root stops Shopee's inherited font, colour and
+ * box-sizing from leaking in.
+ */
+
+#srme-root {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647; /* above Shopee's own overlays, which sit high */
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #1f2937;
+}
+
+#srme-root *,
+#srme-root *::before,
+#srme-root *::after {
+  box-sizing: border-box;
+}
+
+#srme-root .srme-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+#srme-root .srme-panel {
+  position: absolute;
+  inset: 4vh 6vw;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+#srme-root .srme-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+#srme-root .srme-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+#srme-root .srme-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+#srme-root .srme-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+#srme-root .srme-spacer {
+  flex: 1;
+}
+
+#srme-root button {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+#srme-root button:hover {
+  background: #f3f4f6;
+}
+
+#srme-root button.srme-primary {
+  background: #ee4d2d; /* Shopee orange, so the main action looks native */
+  border-color: #ee4d2d;
+  color: #fff;
+  font-weight: 600;
+}
+
+#srme-root button.srme-primary:hover {
+  background: #d8431f;
+}
+
+#srme-root button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#srme-root select {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+}
+
+#srme-root .srme-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+  padding: 16px 20px;
+  background: #fff;
+}
+
+#srme-root .srme-tile {
+  position: relative;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f3f4f6;
+  cursor: pointer;
+}
+
+#srme-root .srme-tile.srme-on {
+  border-color: #ee4d2d;
+}
+
+#srme-root .srme-tile.srme-dead {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#srme-root .srme-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: #e5e7eb;
+}
+
+#srme-root .srme-meta {
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #6b7280;
+  background: #fff;
+}
+
+#srme-root .srme-meta strong {
+  display: block;
+  color: #374151;
+  font-weight: 600;
+}
+
+#srme-root .srme-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.75);
+  color: #fff;
+}
+
+#srme-root .srme-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(17, 24, 39, 0.6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+#srme-root .srme-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+#srme-root .srme-count {
+  font-size: 13px;
+  color: #374151;
+}
+
+#srme-root .srme-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+}
