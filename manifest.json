@@ -1,0 +1,79 @@
+{
+  "manifest_version": 3,
+  "name": "Shopee Review Media Extractor",
+  "version": "1.0.0",
+  "description": "Extract review images, review videos and product content from any Shopee product page. No page limit.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "activeTab",
+    "downloads",
+    "offscreen",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://shopee.com.my/*",
+    "https://shopee.sg/*",
+    "https://shopee.ph/*",
+    "https://shopee.co.th/*",
+    "https://shopee.co.id/*",
+    "https://*.shopee.com.my/*",
+    "https://*.shopee.sg/*",
+    "https://*.shopee.ph/*",
+    "https://*.shopee.co.th/*",
+    "https://*.shopee.co.id/*",
+    "https://*.susercontent.com/*",
+    "https://raw.githubusercontent.com/*"
+  ],
+  "options_page": "options/options.html",
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://shopee.com.my/*",
+        "https://shopee.sg/*",
+        "https://shopee.ph/*",
+        "https://shopee.co.th/*",
+        "https://shopee.co.id/*"
+      ],
+      "js": ["content/interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://shopee.com.my/*",
+        "https://shopee.sg/*",
+        "https://shopee.ph/*",
+        "https://shopee.co.th/*",
+        "https://shopee.co.id/*"
+      ],
+      "js": [
+        "lib/naming.js",
+        "content/api.js",
+        "content/picker.js",
+        "content/content.js"
+      ],
+      "css": ["content/picker.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
