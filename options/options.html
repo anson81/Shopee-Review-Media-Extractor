@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Shopee Review Media Extractor — Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Shopee Review Media Extractor</h1>
+      <p class="version">Version <span id="version">…</span></p>
+
+      <section>
+        <h2>Where exports are saved</h2>
+
+        <p class="note">
+          Choose a folder and the extension writes each export into it itself. Without one,
+          it asks Chrome to save the file — and any other extension that handles downloads
+          can rename it, which is how files end up as <code>download (2).zip</code>. Chrome
+          gives the final say to whichever extension was installed most recently, so that
+          problem comes back on its own whenever one of them updates. Choosing a folder ends
+          it for good.
+        </p>
+
+        <p id="output-status" class="status">Checking…</p>
+        <div class="buttons">
+          <button id="pick-output" type="button">Choose the exports folder…</button>
+          <button id="forget-output" type="button" hidden>Forget it</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Exports</h2>
+
+        <label class="field">
+          <span>Default filename style</span>
+          <select id="style">
+            <option value="page-review-type">Page, review, type — page01_r03_img1.jpg</option>
+            <option value="date-buyer">Date, buyer — 2026-07-14_ahmad_img1.jpg</option>
+            <option value="sequential">Sequential — 0001.jpg</option>
+          </select>
+          <small
+            >You can still change this for a single run in the popup. Whatever you pick,
+            names that would clash get a number added, so nothing is ever overwritten.</small
+          >
+        </label>
+      </section>
+
+      <section>
+        <h2>Being gentle with Shopee</h2>
+
+        <p class="note">
+          These slow the extension down on purpose. A big run makes hundreds of requests
+          from your logged-in account, and asking too fast is what gets an account rate
+          limited. The defaults are safe; raise them only if a run is being refused.
+        </p>
+
+        <div class="grid">
+          <label class="field">
+            <span>Pause between review pages (ms)</span>
+            <input id="delay" type="number" min="0" max="5000" step="50" />
+            <small>0–5000. Default 300.</small>
+          </label>
+
+          <label class="field">
+            <span>Files downloaded at once</span>
+            <input id="concurrency" type="number" min="1" max="8" />
+            <small>1–8. Default 4.</small>
+          </label>
+        </div>
+      </section>
+
+      <section>
+        <h2>Updates</h2>
+        <p id="update-status" class="status">Checking…</p>
+
+        <div class="buttons">
+          <button id="check" type="button">Check for updates</button>
+          <button id="install" type="button" hidden>Install update</button>
+        </div>
+
+        <p id="folder-status" class="status">Checking the extension folder…</p>
+        <div class="buttons">
+          <button id="pick-folder" type="button">Choose the extension folder…</button>
+          <button id="forget-folder" type="button" hidden>Forget it</button>
+        </div>
+
+        <details>
+          <summary>Where updates come from</summary>
+          <div class="grid">
+            <label class="field">
+              <span>GitHub owner</span>
+              <input id="owner" type="text" />
+            </label>
+            <label class="field">
+              <span>Repository</span>
+              <input id="repo" type="text" />
+            </label>
+            <label class="field">
+              <span>Branch</span>
+              <input id="branch" type="text" />
+            </label>
+          </div>
+        </details>
+
+        <p class="note">
+          Installing an update asks you to pick this extension's folder. That is a one-off,
+          and it is the only way a browser lets an extension write to its own files.
+        </p>
+      </section>
+
+      <div id="saved" class="saved" hidden>Saved</div>
+    </main>
+
+    <script src="options.js"></script>
+  </body>
+</html>

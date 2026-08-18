@@ -1,0 +1,4 @@
+# Windows checks these out as CRLF, which then reads as an edit to every file on
+# every `git status`. Normalise to LF in the repo so a real change is visible.
+* text=auto eol=lf
+*.png binary

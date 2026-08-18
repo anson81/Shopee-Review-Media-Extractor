@@ -19,7 +19,7 @@ In scope:
 - Review images and review videos, across any number of review pages
 - Product main images, variant images, product videos, description content
 - A visual picker so the user chooses which found files to export
-- One ZIP per product, written to the Downloads folder
+- One ZIP per product, written into a folder the user chooses once
 - A `reviews.csv` describing the reviews whose media was exported
 - Self-update from GitHub, matching the two sibling extensions
 
@@ -154,8 +154,24 @@ Collisions get a numeric suffix.
 
 ## Download behaviour
 
-The background worker calls `chrome.downloads.download()` with an explicit
-`filename`, and **registers no `onDeterminingFilename` listener at all**.
+**Primary path — a folder the user chooses.** The ZIP is written through a
+`FileSystemDirectoryHandle` from an offscreen document, into a folder picked
+once in Options and remembered in IndexedDB. A file written this way never
+touches Chrome's download naming, so no other extension is consulted and the
+name is simply the name.
+
+This is lifted from SiteGiant Downloader, which adopted it in v1.11.0 after
+losing the naming contest repeatedly. It matters more here than there: this is
+the *third* extension on the same machine, and the one most able to disturb the
+other two.
+
+**Fallback — Chrome's downloads.** When no folder is chosen yet, or the
+permission has lapsed, the worker calls `chrome.downloads.download()` with an
+explicit `filename` so a run still produces a file. Options reports which of
+the two applies, and why.
+
+In neither path does this extension **register an `onDeterminingFilename`
+listener at all**.
 
 This is deliberate. `onDeterminingFilename` is browser-wide: every extension
 holding the downloads permission is asked about every download, and a listener
@@ -175,7 +191,8 @@ registers the listener cannot join that contest and cannot regress them.
       picker.css           modal styling, namespaced to avoid page collisions
       interceptor.js       MAIN world: fallback capture of page requests
     background/
-      background.js        message routing, media fetch queue, ZIP, download
+      background.js        message routing, media fetch queue, ZIP, save
+    offscreen/             writes the ZIP into the chosen folder
     lib/
       zip.js               dependency-free store-mode ZIP writer
       csv.js               CSV escaping

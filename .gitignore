@@ -1,0 +1,7 @@
+# Nothing here is built or installed, so there is little to ignore — but a
+# stray download or OS file must never reach a public repo.
+node_modules/
+*.zip
+*.xlsx
+Thumbs.db
+.DS_Store
