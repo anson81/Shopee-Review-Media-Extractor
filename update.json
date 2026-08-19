@@ -1,7 +1,7 @@
 {
-    "version":  "1.1.1",
+    "version":  "1.1.2",
     "notes":  [
-                  "Fixed the Find media button staying greyed out on product pages whose address looks like /product/12345/67890/ instead of the -i.12345.67890 form. Shopee uses both, and only one was recognised."
+                  "The probe now runs inside the page itself, tries three ways of asking Shopee, and records what Shopee\u0027s own page sends - so a refusal tells us why instead of just that."
               ],
     "files":  [
                   "background/background.js",

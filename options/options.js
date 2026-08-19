@@ -417,10 +417,22 @@ async function runProbe() {
       return;
     }
 
-    status.textContent = 'Asking Shopee… this takes a few seconds.';
+    status.textContent =
+      'Running in the page. Now switch to the Shopee tab and scroll down to the ' +
+      'reviews, so Shopee loads them itself — that is what we need to watch. ' +
+      'This waits up to 30 seconds.';
 
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
+      // MAIN, not the default isolated world.
+      //
+      // Since Chrome 85 a fetch from an isolated-world content script is
+      // routed through the EXTENSION's CORS identity: the cookies go, but the
+      // request no longer looks like the page asking for its own data, and
+      // Shopee answered every one of them with 403. Running here makes the
+      // request indistinguishable from the page's own — same origin, same
+      // referer — which is the thing being tested.
+      world: 'MAIN',
       // Passed by reference, but Chrome ships the SOURCE to the page — which
       // is why the probe is one function that closes over nothing.
       func: SRME_Probe.run
@@ -439,13 +451,18 @@ async function runProbe() {
     }
 
     // The headline answer, so the useful part is not buried in the JSON.
-    const asked50 = data.ratings?.limit_50;
-    const got = asked50 ? asked50.got : null;
+    const variants = Object.entries(data.ratings || {});
+    const winner = variants.find(([, v]) => v.got != null);
+    const statuses = variants.map(([n, v]) => n + '=' + v.httpStatus).join(', ');
     const answering = (data.detail || []).filter((d) => d.httpStatus === 200).map((d) => d.path);
 
     status.textContent =
-      'Done. Reviews per call: ' + (got == null ? 'none came back' : got + ' of 50 asked') +
-      ' · detail endpoints answering: ' + (answering.length ? answering.join(', ') : 'none') +
+      'Done, running in the ' + (data.world || '?') + ' world. ' +
+      (winner
+        ? 'Reviews came through via "' + winner[0] + '" (' + winner[1].got + ' rows). '
+        : 'Reviews still refused (' + statuses + '). ') +
+      'Detail endpoints answering: ' + (answering.length ? answering.join(', ') : 'none') +
+      '. Captured ' + (data.pageRequestCount || 0) + ' of Shopee’s own requests' +
       ' — send me the text below.';
   } catch (err) {
     status.textContent = 'Could not run it: ' + (err?.message || err);
