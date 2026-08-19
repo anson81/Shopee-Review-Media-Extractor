@@ -84,9 +84,14 @@ async function ensureContentScript(tabId) {
 function isProductPage(tab) {
   try {
     const url = new URL(tab.url);
-    // The product page is the one carrying the i.SHOP.ITEM segment. Search
-    // results and the shop page share the host but have no product to read.
-    return PRODUCT_HOSTS.test(url.hostname) && /i\.\d+\.\d+/.test(url.pathname);
+    if (!PRODUCT_HOSTS.test(url.hostname)) return false;
+
+    // Asked of api.js rather than re-tested here. This used to carry its own
+    // copy of the rule that only knew the i.SHOP.ITEM form, so on a
+    // /product/SHOP/ITEM/ URL — which Shopee serves just as often — the popup
+    // decided it was not a product page and disabled the button, while every
+    // other part of the extension would have handled it fine.
+    return window.SRME_Api.isProductUrl(tab.url);
   } catch (_) {
     return false;
   }

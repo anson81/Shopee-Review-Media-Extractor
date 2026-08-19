@@ -377,7 +377,15 @@ async function install() {
  * product page floods the console with its own warnings anyway, so the answer
  * was getting lost even when the paste worked. A button has neither problem.
  * ------------------------------------------------------------------ */
-const PRODUCT_URL = /shopee\.(com\.my|sg|ph|co\.th|co\.id)\/.*i\.\d+\.\d+/i;
+// Shopee serves two product URL forms and both are ordinary:
+//   /Some-Product-i.123456.7890123   and   /product/123456/7890123/
+// Matching only the first is what left the popup's button disabled on a
+// perfectly normal product page.
+const SHOPEE_HOST = /shopee\.(com\.my|sg|ph|co\.th|co\.id)\//i;
+const PRODUCT_PATH = /(i\.\d+\.\d+|\/product\/\d+\/\d+)/i;
+const PRODUCT_URL = {
+  test: (url) => SHOPEE_HOST.test(url) && PRODUCT_PATH.test(url)
+};
 
 async function findProductTab() {
   // The active tab first, since that is almost always the one meant. Falling

@@ -41,16 +41,31 @@
   const MAX_RETRIES = 4;
 
   /**
-   * itemid and shopid live in the trailing "i.SHOP.ITEM" segment of a product
-   * URL:  https://shopee.com.my/Some-Product-i.123456.7890123
+   * itemid and shopid out of a product URL. Shopee serves TWO forms and both
+   * are ordinary — this is not a region quirk, the same shop hands out both:
    *
-   * Region variants exist, so a failure here is expected rather than
-   * exceptional — the caller falls back to the page's embedded state.
+   *   https://shopee.com.my/Some-Product-i.123456.7890123
+   *   https://shopee.com.my/product/123456/7890123/
+   *
+   * Only the first was handled, so on a /product/ URL the extension decided
+   * it was not on a product page at all and the Find button stayed dead.
+   * Both put shopid first.
    */
   function idsFromUrl(href) {
-    const match = String(href || '').match(/i\.(\d+)\.(\d+)/);
-    if (!match) return null;
-    return { shopid: match[1], itemid: match[2] };
+    const s = String(href || '');
+
+    const dotted = s.match(/i\.(\d+)\.(\d+)/);
+    if (dotted) return { shopid: dotted[1], itemid: dotted[2] };
+
+    const pathForm = s.match(/\/product\/(\d+)\/(\d+)/);
+    if (pathForm) return { shopid: pathForm[1], itemid: pathForm[2] };
+
+    return null;
+  }
+
+  /** Does this URL name a product at all? Used to enable the popup's button. */
+  function isProductUrl(href) {
+    return idsFromUrl(href) !== null;
   }
 
   /**
@@ -291,6 +306,7 @@
     DETAIL_PATH,
     DEFAULT_PAGE_DELAY_MS,
     idsFromUrl,
+    isProductUrl,
     regionFor,
     cdnBase,
     imageUrl,

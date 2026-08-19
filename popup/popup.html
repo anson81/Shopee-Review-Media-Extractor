@@ -57,6 +57,13 @@
       <p id="folder-note" class="note" hidden></p>
     </main>
 
+    <!--
+      api.js is loaded here purely so the popup asks the SAME code as the
+      content script whether a URL is a product page. Two copies of that rule
+      is how the button came to be disabled on /product/ URLs that the rest of
+      the extension handles perfectly well.
+    -->
+    <script src="../content/api.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

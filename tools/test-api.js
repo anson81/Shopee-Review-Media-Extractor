@@ -61,12 +61,32 @@ const BASE = {
 };
 
 console.log('url and id parsing');
-check('reads ids from a product url',
-  JSON.stringify(A.idsFromUrl('https://shopee.com.my/Nice-Thing-i.123456.7890123')) ===
-  JSON.stringify({ shopid: '123456', itemid: '7890123' }));
+const IDS = JSON.stringify({ shopid: '123456', itemid: '7890123' });
+
+check('reads the i.SHOP.ITEM form',
+  JSON.stringify(A.idsFromUrl('https://shopee.com.my/Nice-Thing-i.123456.7890123')) === IDS);
+
+// Shopee serves this form just as often, and only the other one was handled —
+// so the popup called a real product page "not a product page" and disabled
+// the button. Found on a live page, not by reading.
+check('reads the /product/SHOP/ITEM form',
+  JSON.stringify(A.idsFromUrl('https://shopee.com.my/product/123456/7890123/')) === IDS,
+  JSON.stringify(A.idsFromUrl('https://shopee.com.my/product/123456/7890123/')));
+check('reads the /product/ form with a query string',
+  JSON.stringify(A.idsFromUrl('https://shopee.com.my/product/123456/7890123?utm=x')) === IDS);
+check('both forms agree on which number is which',
+  JSON.stringify(A.idsFromUrl('https://shopee.com.my/x-i.123456.7890123')) ===
+  JSON.stringify(A.idsFromUrl('https://shopee.com.my/product/123456/7890123/')));
+
 check('returns null when the url has no ids',
   A.idsFromUrl('https://shopee.com.my/search?keyword=x') === null);
 check('survives a null url', A.idsFromUrl(null) === null);
+
+check('isProductUrl accepts both forms',
+  A.isProductUrl('https://shopee.com.my/x-i.1.2') &&
+  A.isProductUrl('https://shopee.com.my/product/1/2/'));
+check('isProductUrl rejects a search page',
+  !A.isProductUrl('https://shopee.com.my/search?keyword=x'));
 
 console.log('region and cdn');
 check('malaysia', A.regionFor('shopee.com.my') === 'my');
