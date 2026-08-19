@@ -1,7 +1,7 @@
 {
-    "version":  "1.0.0",
+    "version":  "1.0.1",
     "notes":  [
-                  "First release."
+                  "Added a Run probe button in Settings, so checking what Shopee\u0027s endpoints return no longer needs the DevTools console."
               ],
     "files":  [
                   "background/background.js",
@@ -15,6 +15,7 @@
                   "icons/icon48.png",
                   "lib/csv.js",
                   "lib/naming.js",
+                  "lib/probe.js",
                   "lib/zip.js",
                   "manifest.json",
                   "offscreen/offscreen.html",
@@ -24,6 +25,7 @@
                   "options/options.js",
                   "popup/popup.css",
                   "popup/popup.html",
-                  "popup/popup.js"
+                  "popup/popup.js",
+                  "update.json"
               ]
 }

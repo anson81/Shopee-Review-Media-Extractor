@@ -369,6 +369,83 @@ async function install() {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * Diagnostics
+ *
+ * The same checks the console script does, run from here instead. Chrome
+ * blocks the first paste into DevTools as a self-XSS guard, and a Shopee
+ * product page floods the console with its own warnings anyway, so the answer
+ * was getting lost even when the paste worked. A button has neither problem.
+ * ------------------------------------------------------------------ */
+const PRODUCT_URL = /shopee\.(com\.my|sg|ph|co\.th|co\.id)\/.*i\.\d+\.\d+/i;
+
+async function findProductTab() {
+  // The active tab first, since that is almost always the one meant. Falling
+  // back to any product tab saves a round trip when Settings is the active tab
+  // in its own window, which it usually is.
+  const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (active && PRODUCT_URL.test(active.url || '')) return active;
+
+  const all = await chrome.tabs.query({});
+  return all.find((t) => PRODUCT_URL.test(t.url || '')) || null;
+}
+
+async function runProbe() {
+  const status = $('probe-status');
+  const out = $('probe-out');
+  const copy = $('probe-copy');
+  const button = $('probe');
+
+  out.hidden = true;
+  copy.hidden = true;
+  button.disabled = true;
+  status.textContent = 'Looking for an open product page…';
+
+  try {
+    const tab = await findProductTab();
+    if (!tab) {
+      status.textContent =
+        'No Shopee product page is open. Open one (the address has i.NUMBER.NUMBER in it) and try again.';
+      return;
+    }
+
+    status.textContent = 'Asking Shopee… this takes a few seconds.';
+
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      // Passed by reference, but Chrome ships the SOURCE to the page — which
+      // is why the probe is one function that closes over nothing.
+      func: SRME_Probe.run
+    });
+
+    const data = result?.result;
+    if (!data) throw new Error('The page returned nothing.');
+
+    out.value = JSON.stringify(data, null, 2);
+    out.hidden = false;
+    copy.hidden = false;
+
+    if (data.problem) {
+      status.textContent = data.problem;
+      return;
+    }
+
+    // The headline answer, so the useful part is not buried in the JSON.
+    const asked50 = data.ratings?.limit_50;
+    const got = asked50 ? asked50.got : null;
+    const answering = (data.detail || []).filter((d) => d.httpStatus === 200).map((d) => d.path);
+
+    status.textContent =
+      'Done. Reviews per call: ' + (got == null ? 'none came back' : got + ' of 50 asked') +
+      ' · detail endpoints answering: ' + (answering.length ? answering.join(', ') : 'none') +
+      ' — send me the text below.';
+  } catch (err) {
+    status.textContent = 'Could not run it: ' + (err?.message || err);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   $('version').textContent = chrome.runtime.getManifest().version;
 
@@ -403,6 +480,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     await refreshFolderStatus();
   });
   await refreshFolderStatus();
+
+  $('probe').addEventListener('click', runProbe);
+  $('probe-copy').addEventListener('click', async () => {
+    await navigator.clipboard.writeText($('probe-out').value);
+    $('probe-status').textContent = 'Copied — paste it back to Claude.';
+  });
 
   const { updateInfo } = await chrome.storage.local.get('updateInfo');
   renderUpdate(updateInfo);

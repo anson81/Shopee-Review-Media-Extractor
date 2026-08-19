@@ -109,9 +109,31 @@
         </p>
       </section>
 
+      <section>
+        <h2>Diagnostics</h2>
+
+        <p class="note">
+          Runs a read-only check against whichever Shopee product page you have open,
+          and reports what its endpoints actually return. Use it when something comes
+          back empty — Shopee changes these without warning, and this says exactly
+          what changed. It only reads: about five requests, the same ones the page
+          already makes for itself. Nothing is downloaded and nothing on the page is
+          touched.
+        </p>
+
+        <p id="probe-status" class="status">Open a Shopee product page, then run this.</p>
+        <div class="buttons">
+          <button id="probe" type="button">Run probe on the open product page</button>
+          <button id="probe-copy" type="button" hidden>Copy result</button>
+        </div>
+
+        <textarea id="probe-out" rows="14" spellcheck="false" hidden readonly></textarea>
+      </section>
+
       <div id="saved" class="saved" hidden>Saved</div>
     </main>
 
+    <script src="../lib/probe.js"></script>
     <script src="options.js"></script>
   </body>
 </html>
