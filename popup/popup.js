@@ -35,6 +35,52 @@ async function activeTab() {
   return tab;
 }
 
+/**
+ * Make sure the page actually has our content script in it.
+ *
+ * Chrome injects declared content scripts on NAVIGATION. Every tab that was
+ * already open when the extension was installed, reloaded, or updated has no
+ * script in it — which is every tab, the first time anyone uses this.
+ *
+ * Without this, clicking Find sent a message into a tab with no listener.
+ * chrome.tabs.sendMessage rejects asynchronously in that case, so the
+ * try/catch around it could never fire and the .catch() swallowed it: the
+ * button hid, "Starting…" appeared, and nothing else ever happened. Telling
+ * the user to reload every tab is not a fix; injecting is. Both sibling
+ * extensions carry this same helper for the same reason.
+ */
+async function ensureContentScript(tabId) {
+  try {
+    const pong = await chrome.tabs.sendMessage(tabId, { type: 'ping' });
+    if (pong?.ok) return true;
+  } catch (_) {
+    /* not there yet - inject below */
+  }
+
+  try {
+    // MAIN world first and separately: it wraps the page's own fetch, and it
+    // cannot be bundled with the isolated-world files.
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      files: ['content/interceptor.js']
+    });
+  } catch (_) {
+    /* the fallback path is a bonus; carry on without it */
+  }
+
+  await chrome.scripting.insertCSS({ target: { tabId }, files: ['content/picker.css'] });
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    // Same order as the manifest. api.js and picker.js must be defined before
+    // content.js reads them.
+    files: ['lib/naming.js', 'content/api.js', 'content/picker.js', 'content/content.js']
+  });
+
+  const pong = await chrome.tabs.sendMessage(tabId, { type: 'ping' });
+  return !!pong?.ok;
+}
+
 function isProductPage(tab) {
   try {
     const url = new URL(tab.url);
@@ -64,7 +110,13 @@ function render(state) {
 
   if (running) {
     if (state.phase === 'finding') {
-      setStatus('Page ' + (state.page || 0) + ' · ' + (state.found || 0) + ' files found');
+      // "Page 7 of 50 · 312 files", per the spec. The total is only known
+      // when a range was given, so it is omitted rather than guessed.
+      const page = 'Page ' + (state.page || 0) +
+        (state.totalPages ? ' of ' + state.totalPages : '');
+      setStatus(page + ' · ' + (state.found || 0) + ' files');
+    } else if (state.phase === 'choosing') {
+      setStatus(state.message || 'Waiting for you to choose…');
     } else if (state.phase === 'fetching') {
       setStatus('Downloading ' + (state.done || 0) + ' of ' + (state.total || 0) + '…');
     } else {
@@ -82,11 +134,32 @@ function render(state) {
   if (result) {
     const bits = ['Saved ' + result.files + ' files'];
     if (result.failed) bits.push(result.failed + ' could not be downloaded');
-    setStatus(bits.join(' · ') + '.', 'good');
+    setStatus(bits.join(' · ') + '.', result.downloadFailed ? 'error' : 'good');
 
-    const note = describeFolderIssue(result.folderIssue);
-    $('folder-note').hidden = !note;
-    $('folder-note').textContent = note;
+    // Everything below is something the user would otherwise never learn.
+    const notes = [];
+    const folder = describeFolderIssue(result.folderIssue);
+    if (folder) notes.push(folder);
+    if (result.usedFallback) {
+      notes.push(
+        'Shopee’s usual endpoint did not answer, so this came from what the ' +
+        'page had already loaded. It is probably less than everything.'
+      );
+    }
+    if (result.misnamed) {
+      notes.push('Chrome saved it as "' + result.misnamed + '" instead.');
+    }
+    if (result.downloadFailed) {
+      notes.push('The download did not finish. Check your Downloads list.');
+    }
+
+    $('folder-note').hidden = notes.length === 0;
+    $('folder-note').textContent = notes.join(' ');
+    return;
+  }
+
+  if (state.message) {
+    setStatus(state.message);
     return;
   }
 
@@ -125,8 +198,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('stop').hidden = false;
 
     try {
-      // Fire and forget: the picker outlives this popup, which closes as soon
-      // as the user clicks into the page. The worker keeps the state.
+      // Awaited, unlike the run itself: if the script cannot be got into the
+      // page there is no point pretending a run started.
+      await ensureContentScript(tab.id);
+
+      // Fire and forget from here: the picker outlives this popup, which
+      // closes as soon as the user clicks into the page. The worker keeps the
+      // state. The rejection when the popup unloads is expected and ignored;
+      // a real delivery failure would already have thrown above.
       chrome.tabs.sendMessage(tab.id, {
         type: 'find',
         pages: $('pages').value,
@@ -135,7 +214,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         want
       }).catch(() => {});
     } catch (err) {
-      setStatus(err?.message || String(err), 'error');
+      setStatus(
+        'Could not start on this page: ' + (err?.message || err) +
+        ' — try reloading the Shopee tab.',
+        'error'
+      );
       $('find').hidden = false;
       $('stop').hidden = true;
     }

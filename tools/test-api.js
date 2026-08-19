@@ -88,13 +88,44 @@ check('an unexpected shape yields nothing rather than throwing',
 check('null yields nothing', A.readRatings(null).length === 0);
 
 console.log('page range parsing');
-check('all means no limit', A.parsePageRange('all') === null);
-check('blank means no limit', A.parsePageRange('') === null);
-check('a range reads its upper bound', A.parsePageRange('1-20') === 20);
-check('a range with spaces', A.parsePageRange(' 2 - 7 ') === 7);
-check('a single number', A.parsePageRange('5') === 5);
-check('nonsense means no limit rather than zero pages', A.parsePageRange('abc') === null);
-check('zero means no limit rather than an empty run', A.parsePageRange('0') === null);
+const range = (s) => {
+  const r = A.parsePageRange(s);
+  return r.from + '..' + (r.to === null ? 'end' : r.to);
+};
+check('all means everything', range('all') === '1..end');
+check('blank means everything', range('') === '1..end');
+check('a range keeps BOTH bounds', range('1-20') === '1..20', range('1-20'));
+// The bug this file used to bless: "5-10" fetched pages 1-10, because only
+// the upper bound survived. "1-20" hid it, since there the start is 1 anyway.
+check('a range starting past page 1 keeps its start', range('5-10') === '5..10', range('5-10'));
+check('a range with spaces', range(' 2 - 7 ') === '2..7', range(' 2 - 7 '));
+check('a reversed range is read as a typo, not as nothing',
+  range('10-5') === '5..10', range('10-5'));
+check('a single number', range('5') === '1..5');
+check('nonsense means everything rather than zero pages', range('abc') === '1..end');
+check('zero means everything rather than an empty run', range('0') === '1..end');
+
+console.log('endpoints are what we think they are');
+// M12/M13: replacing these constants with nonsense used to leave the suite
+// green, so a typo in the one file that knows Shopee's API was undetectable.
+check('ratings path', A.RATINGS_PATH === '/api/v2/item/get_ratings', A.RATINGS_PATH);
+check('detail path', A.DETAIL_PATH === '/api/v4/pdp/get_pc', A.DETAIL_PATH);
+check('ratings url carries the ids and paging',
+  (() => {
+    const u = new URL(A.ratingsUrl('https://shopee.com.my', { shopid: '1', itemid: '2' }, 100, 50));
+    return u.pathname === A.RATINGS_PATH &&
+      u.searchParams.get('shopid') === '1' &&
+      u.searchParams.get('itemid') === '2' &&
+      u.searchParams.get('offset') === '100' &&
+      u.searchParams.get('limit') === '50';
+  })());
+check('detail url carries the ids',
+  (() => {
+    const u = new URL(A.detailUrl('https://shopee.com.my', { shopid: '1', itemid: '2' }));
+    return u.pathname === A.DETAIL_PATH &&
+      u.searchParams.get('shop_id') === '1' &&
+      u.searchParams.get('item_id') === '2';
+  })());
 
 console.log('normalising a rating');
 const norm = A.normaliseRating({
@@ -137,10 +168,21 @@ console.log('paging');
 
   const capped = stubServer(1000);
   const d = await A.fetchReviews(Object.assign({}, BASE, {
-    fetchImpl: capped.fetchImpl, maxPages: 3
+    fetchImpl: capped.fetchImpl, toPage: 3
   }));
-  check('maxPages caps the run', d.length === 150, d.length + ' reviews');
-  check('maxPages stops asking', capped.calls.length === 3, capped.calls.length + ' calls');
+  check('toPage caps the run', d.length === 150, d.length + ' reviews');
+  check('toPage stops asking', capped.calls.length === 3, capped.calls.length + ' calls');
+
+  // The whole point of keeping the lower bound: it must actually skip.
+  const skipped = stubServer(1000);
+  const s = await A.fetchReviews(Object.assign({}, BASE, {
+    fetchImpl: skipped.fetchImpl, fromPage: 5, toPage: 6
+  }));
+  check('fromPage skips the pages before it', s.length === 100, s.length + ' reviews');
+  check('fromPage starts at the right offset',
+    new URL(skipped.calls[0]).searchParams.get('offset') === '200',
+    skipped.calls[0]);
+  check('fromPage numbers the pages correctly', s[0].page === 5, 'page ' + s[0].page);
 
   const stopper = stubServer(1000);
   let seen = 0;
@@ -170,6 +212,46 @@ console.log('paging');
   }
   check('does not retry a 404', threw !== null && gone.calls.length === 1,
     gone.calls.length + ' calls');
+
+  // Backoff must actually GROW. Flattening it to a constant used to pass,
+  // which meant the politeness the spec promises was never verified.
+  const stamps = [];
+  const slow = {
+    fetchImpl: async () => {
+      stamps.push(Date.now());
+      if (stamps.length <= 3) return { ok: false, status: 503, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ data: { ratings: [] } }) };
+    }
+  };
+  await A.fetchReviews(Object.assign({}, BASE, { fetchImpl: slow.fetchImpl }));
+  const gaps = stamps.slice(1).map((t, i) => t - stamps[i]);
+  check('backoff grows between retries',
+    gaps.length >= 3 && gaps[1] > gaps[0] && gaps[2] > gaps[1],
+    gaps.join('ms, ') + 'ms');
+
+  console.log('politeness');
+  // pageDelayMs is deleted-and-still-green territory: BASE sets it to 0, so
+  // nothing anywhere exercised the pause between pages.
+  const paced = stubServer(150);
+  const startedAt = Date.now();
+  await A.fetchReviews(Object.assign({}, BASE, {
+    fetchImpl: paced.fetchImpl, pageDelayMs: 120
+  }));
+  const elapsed = Date.now() - startedAt;
+  check('waits between pages', elapsed >= 200, elapsed + 'ms for 3 pages');
+
+  console.log('session');
+  // Losing this sends the requests logged out, which returns different data
+  // rather than an error - the kind of change that passes CI and breaks live.
+  let sawCredentials = null;
+  await A.fetchJson('https://shopee.com.my/x', {
+    fetchImpl: async (_url, init) => {
+      sawCredentials = init && init.credentials;
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+  });
+  check('sends cookies with every request', sawCredentials === 'include',
+    String(sawCredentials));
 
   console.log('');
   if (failures) {

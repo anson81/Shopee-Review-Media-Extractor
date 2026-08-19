@@ -141,6 +141,58 @@ check('a very long pair is truncated',
 check('root folder matches the zip name without the extension',
   N.zipName('My Shop', 'My Product') === N.rootFolderName('My Shop', 'My Product') + '.zip');
 
+// The check above compares the two FUNCTIONS to each other, which passed
+// happily while the real archive disagreed: assignPaths re-sanitised the root
+// with the 80-char filename cap while the zip was named at 120, so a long
+// name produced a folder inside the archive that did not match the archive.
+// The only honest test goes through the path assignment.
+console.log('long names, end to end');
+const longShop = 'Super Duper Gadget Emporium Malaysia Official Store';
+const longProduct = 'Wireless Noise Cancelling Bluetooth Earbuds Waterproof Sport Headphones 2026';
+const realRoot = N.rootFolderName(longShop, longProduct);
+const realZip = N.zipName(longShop, longProduct);
+const assignedLong = N.assignPaths(
+  [{ kind: 'image', source: 'review', page: 1, reviewIndex: 1, mediaIndex: 1, url: 'a.jpg' }],
+  N.STYLES.PAGE_REVIEW_TYPE,
+  realRoot
+);
+const archiveRoot = assignedLong[0].path.split('/')[0];
+check('the folder inside the archive matches the archive name',
+  archiveRoot + '.zip' === realZip,
+  archiveRoot + '.zip  vs  ' + realZip);
+
+console.log('astral characters');
+// slice() cuts UTF-16 code units, so truncation could split an emoji and
+// leave a lone surrogate, which becomes U+FFFD in the archive path. Shopee
+// shop names carry emoji constantly.
+const emojiName = 'shop'.repeat(19) + '👍👍👍';
+const cut = N.sanitizeSegment(emojiName, 'x');
+check('truncation never leaves a lone surrogate',
+  !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(cut) &&
+  !/(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(cut),
+  JSON.stringify(cut.slice(-4)));
+
+console.log('length limits');
+const wide = N.assignPaths(
+  Array.from({ length: 3 }, () => ({
+    kind: 'image', source: 'variant', label: 'L'.repeat(200), mediaIndex: 1, url: 'a.jpg'
+  })),
+  N.STYLES.PAGE_REVIEW_TYPE,
+  N.rootFolderName('A'.repeat(80), 'B'.repeat(80))
+);
+check('a collision suffix cannot push a segment back over the cap',
+  wide.every((w) => w.path.split('/').pop().length <= 90),
+  wide.map((w) => w.path.split('/').pop().length).join(', '));
+check('the whole in-archive path leaves room for an extract folder',
+  wide.every((w) => w.path.length <= 140),
+  'longest ' + Math.max(...wide.map((w) => w.path.length)));
+
+console.log('more reserved device names');
+check('CONIN$ is escaped', N.sanitizeSegment('CONIN$', 'x') === '_CONIN$');
+check('CONOUT$ is escaped', N.sanitizeSegment('conout$', 'x') === '_conout$');
+check('COM with a superscript digit is escaped',
+  N.sanitizeSegment('COM¹', 'x') === '_COM¹', N.sanitizeSegment('COM¹', 'x'));
+
 console.log('');
 if (failures) {
   console.log(failures + ' failure(s)');

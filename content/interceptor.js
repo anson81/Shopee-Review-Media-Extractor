@@ -24,18 +24,59 @@
 
   const TAG = '__SRME__';
 
-  // Ratings is what we are after. get_pc_detail carries the product itself
-  // (main images, variants, video, description) and is worth the same
-  // treatment for the same reason.
-  const WATCHED = /get_ratings|get_pc_detail|get_item_detail|item\/get/i;
+  // Ratings is what we are after. The product detail endpoint carries the
+  // rest (main images, variants, video, description).
+  //
+  // `pdp/get_pc` is here because it was missing: the watch list named
+  // get_pc_detail and get_item_detail, neither of which matches the
+  // /api/v4/pdp/get_pc that api.js actually calls, so the fallback could
+  // never capture the endpoint it existed to back up.
+  const WATCHED = /get_ratings|pdp\/get_pc|get_pc_detail|get_item_detail|item\/get/i;
+
+  /**
+   * Anything posted before content.js is listening.
+   *
+   * This script runs at document_start and the ISOLATED-world listener is
+   * installed at document_idle, so the page's own first ratings call — the
+   * most valuable one, because it is the one that already succeeded — was
+   * being posted into a void. The listener announces itself when it is ready
+   * and everything held here is replayed.
+   */
+  let buffer = [];
+  let listening = false;
+  const MAX_BUFFER = 40;
 
   function post(payload) {
+    const message = Object.assign({ [TAG]: true }, payload);
+
+    if (!listening) {
+      if (buffer.length < MAX_BUFFER) buffer.push(message);
+      return;
+    }
+
     try {
-      window.postMessage(Object.assign({ [TAG]: true }, payload), window.location.origin);
+      window.postMessage(message, window.location.origin);
     } catch (_) {
       /* never break the page */
     }
   }
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    const d = event.data;
+    if (!d || d[TAG] !== true || d.kind !== 'ready') return;
+
+    listening = true;
+    const held = buffer;
+    buffer = [];
+    for (const message of held) {
+      try {
+        window.postMessage(message, window.location.origin);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  });
 
   function relay(url, json) {
     if (!json || typeof json !== 'object') return;

@@ -36,37 +36,78 @@
     if (/get_ratings/i.test(data.url)) {
       const list = Api.readRatings(data.json);
       if (list.length) captured.ratings.push(...list);
-    } else if (data.json) {
-      captured.detail = data.json;
+      return;
     }
+
+    if (!data.json) return;
+
+    // Only keep a detail payload that is about THIS product. The watch list
+    // also matches recommendation and related-item calls, and last-writer-wins
+    // meant the fallback could be holding a different product's payload — the
+    // silent kind of wrong, where the export looks fine and is not.
+    const ids = productIds();
+    if (ids && String(data.url).indexOf(String(ids.itemid)) === -1) return;
+    captured.detail = data.json;
   });
+
+  // Tells interceptor.js it may start posting. It runs at document_start and
+  // this listener is installed at document_idle, so without this handshake
+  // everything the page loaded for itself in between was posted into a void.
+  try {
+    window.postMessage({ [TAG]: true, kind: 'ready' }, location.origin);
+  } catch (_) {
+    /* the fallback is a bonus, never a requirement */
+  }
 
   /* ------------------------------------------------------------------ *
    * Identifying the product
    * ------------------------------------------------------------------ */
 
   /**
-   * The URL is the reliable source. The embedded state is the fallback for
-   * region URL forms that do not carry the i.SHOP.ITEM segment.
+   * Identify the product being viewed.
+   *
+   * THE ORDER MATTERS, and the thing that is NOT here matters more.
+   *
+   * This used to fall back to scanning document.documentElement.innerHTML for
+   * the first "itemid" it could find. A Shopee product page embeds "You may
+   * also like" and "Similar products" carousels, each carrying its own
+   * itemid/shopid — and .match() returns the first hit in the document, not
+   * the relevant one. So on any page where the URL did not carry the ids, the
+   * extension could export a DIFFERENT product's reviews into a folder named
+   * after this one, with no error anywhere. Nothing downstream could detect
+   * it, because every id was internally consistent.
+   *
+   * Every source below names the page's OWN product and nothing else.
    */
   function productIds() {
+    // 1. The address bar.
     const fromUrl = Api.idsFromUrl(location.href);
     if (fromUrl) return fromUrl;
 
-    try {
-      const initial = window.__INITIAL_STATE__ || window.__NEXT_DATA__;
-      const text = initial ? JSON.stringify(initial) : document.documentElement.innerHTML;
-      const m = text.match(/"itemid"\s*:\s*(\d+)[\s\S]{0,200}?"shopid"\s*:\s*(\d+)/) ||
-        text.match(/"shopid"\s*:\s*(\d+)[\s\S]{0,200}?"itemid"\s*:\s*(\d+)/);
-      if (!m) return null;
-      // The two patterns capture in opposite orders; disambiguate by which
-      // matched rather than trusting position.
-      return /"itemid"/.test(m[0].slice(0, 12))
-        ? { itemid: m[1], shopid: m[2] }
-        : { shopid: m[1], itemid: m[2] };
-    } catch (_) {
-      return null;
+    // 2. The canonical link and og:url. Both are the page declaring which
+    //    product it is, in the same i.SHOP.ITEM form.
+    const declared = [
+      document.querySelector('link[rel="canonical"]')?.href,
+      document.querySelector('meta[property="og:url"]')?.content
+    ];
+    for (const href of declared) {
+      const ids = href && Api.idsFromUrl(href);
+      if (ids) return ids;
     }
+
+    // 3. The page's own initial state, read as structured data rather than as
+    //    text, so a carousel entry cannot be mistaken for the product.
+    try {
+      const state = window.__INITIAL_STATE__;
+      const item = state && (state.item || (state.pdp && state.pdp.item));
+      if (item && item.itemid && item.shopid) {
+        return { itemid: String(item.itemid), shopid: String(item.shopid) };
+      }
+    } catch (_) {
+      /* fall through */
+    }
+
+    return null;
   }
 
   function productName() {
@@ -191,14 +232,29 @@
    * ------------------------------------------------------------------ */
 
   let stopped = false;
+  /** One run at a time. A second Find while the picker is up orphaned it. */
+  let running = false;
 
-  function report(page, found, message) {
-    chrome.runtime.sendMessage({ type: 'progress', page, found, message }).catch(() => {});
+  function report(fields) {
+    chrome.runtime.sendMessage(Object.assign({ type: 'progress' }, fields))
+      .catch(() => {});
   }
 
   async function run(request) {
+    if (running) {
+      throw new Error('A run is already going on this page. Stop it first.');
+    }
+    running = true;
     stopped = false;
 
+    try {
+      return await doRun(request);
+    } finally {
+      running = false;
+    }
+  }
+
+  async function doRun(request) {
     const ids = productIds();
     if (!ids) {
       throw new Error('This does not look like a product page — open a product first.');
@@ -211,15 +267,30 @@
     let reviews = [];
     let usedFallback = false;
 
+    // Told to the worker up front, so the popup shows a run in progress from
+    // the first moment rather than 700ms later — and so a product-content-only
+    // run, which never reaches onPage, is not reported as idle throughout.
+    report({ phase: 'finding', page: 0, found: 0, message: 'Starting…' });
+
     if (want.reviewImages || want.reviewVideos) {
-      const maxPages = Api.parsePageRange(request.pages);
+      const range = Api.parsePageRange(request.pages);
       try {
         reviews = await Api.fetchReviews({
-          origin, hostname, ids, maxPages,
+          origin, hostname, ids,
+          fromPage: range.from,
+          toPage: range.to,
           pageDelayMs: request.pageDelayMs,
           shouldStop: () => stopped,
-          onPage: (page, batch) => {
-            report(page, batch.length, 'Page ' + page + '…');
+          onPage: (page, batch, total) => {
+            // `total` is the running count, not this page's. Reporting
+            // batch.length made the popup read the same number every page.
+            report({
+              phase: 'finding',
+              page,
+              found: total,
+              totalPages: range.to,
+              message: 'Page ' + page + (range.to ? ' of ' + range.to : '') + '…'
+            });
           }
         });
       } catch (err) {
@@ -253,6 +324,15 @@
 
     if (stopped) return { stopped: true };
 
+    if (items.length === 0) {
+      // Nothing to choose from, so do not make the user dismiss a modal to
+      // be told so. The message goes where they are already looking.
+      report({ phase: 'idle', message: 'No media found for this product.' });
+      return { ok: true, empty: true, usedFallback };
+    }
+
+    report({ phase: 'choosing', found: items.length, message: 'Waiting for you to choose…' });
+
     const picked = await Picker.open(items, { style: request.style });
     if (!picked) return { cancelled: true };
 
@@ -264,7 +344,12 @@
         shopName: shopName(),
         productName: productName(),
         style: picked.style,
-        description: desc.text
+        description: desc.text,
+        // Carried into the run result so the popup can say the results came
+        // from the fallback. It used to be returned only to the popup's
+        // discarded sendResponse, so a degraded export was indistinguishable
+        // from a complete one.
+        usedFallback
       }
     });
 
@@ -272,6 +357,13 @@
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    // The popup asks this before every run to find out whether this page
+    // already has the script in it, or needs it injected.
+    if (msg?.type === 'ping') {
+      sendResponse({ ok: true });
+      return undefined;
+    }
+
     if (msg?.type === 'stop') {
       stopped = true;
       Picker.close();

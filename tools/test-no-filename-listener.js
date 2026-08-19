@@ -91,8 +91,23 @@ function codeLines(text) {
     s = s.replace(/<!--[\s\S]*?-->/g, ' ');
     if (s.includes('<!--')) s = s.slice(0, s.indexOf('<!--'));
 
-    const lineComment = s.indexOf('//');
-    if (lineComment !== -1) s = s.slice(0, lineComment);
+    // Only a // that is NOT inside a string literal starts a comment. Cutting
+    // at the first // regardless meant a URL in a string truncated the line
+    // and hid whatever followed — the opposite of the over-strict behaviour
+    // this function used to claim.
+    let quote = null;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (quote) {
+        if (c === '\\') i++;
+        else if (c === quote) quote = null;
+      } else if (c === '"' || c === "'" || c === '`') {
+        quote = c;
+      } else if (c === '/' && s[i + 1] === '/') {
+        s = s.slice(0, i);
+        break;
+      }
+    }
 
     if (s.trim()) out.push(s);
   }
@@ -100,25 +115,46 @@ function codeLines(text) {
   return out;
 }
 
+/**
+ * Collapse the ways the forbidden name can be spelled without writing it.
+ *
+ * A plain substring scan is beaten by `chrome.downloads['onDetermining' +
+ * 'Filename'].addListener(...)`, which is a real registration and passed this
+ * guard unnoticed. Joining adjacent string literals and dropping quotes turns
+ * every such spelling back into the identifier, so bracket access and
+ * concatenation read the same as dot access.
+ */
+function normalise(code) {
+  return code
+    .replace(/(['"`])\s*\+\s*(['"`])/g, '')
+    .replace(/['"`]/g, '');
+}
+
 console.log('shipped code');
 const files = walk(ROOT);
 check('found files to scan', files.length > 0, files.length + ' files');
 
-const offenders = files.filter((f) =>
-  codeLines(fs.readFileSync(f, 'utf8')).some((l) => l.includes(FORBIDDEN)));
+const scan = (text) => codeLines(text).some((l) => normalise(l).includes(FORBIDDEN));
+
+const offenders = files.filter((f) => scan(fs.readFileSync(f, 'utf8')));
 check('no shipped code references ' + FORBIDDEN,
   offenders.length === 0,
   offenders.map((f) => path.relative(ROOT, f)).join(', '));
 
-// Proves the scanner can still see a real registration — a guard that has
-// quietly stopped looking passes just as loudly as one that works.
-const decoy = [
-  '/* mentions ' + FORBIDDEN + ' harmlessly */',
-  '// and ' + FORBIDDEN + ' again',
-  'chrome.downloads.' + FORBIDDEN + '.addListener(fn);'
-].join('\n');
-check('the scanner ignores comments but catches code',
-  codeLines(decoy).length === 1 && codeLines(decoy)[0].includes(FORBIDDEN));
+// A guard that has quietly stopped looking passes exactly as loudly as one
+// that works, so it is made to prove itself on every spelling that has
+// actually got past it.
+const SPLIT = "chrome.downloads['onDetermining' + 'Filename'].addListener(fn);";
+const BRACKET = "chrome.downloads['" + FORBIDDEN + "'].addListener(fn);";
+const PLAIN = 'chrome.downloads.' + FORBIDDEN + '.addListener(fn);';
+
+check('catches a plain registration', scan(PLAIN));
+check('catches bracket access', scan(BRACKET));
+check('catches a concatenated name', scan(SPLIT), SPLIT);
+check('still ignores a block comment', !scan('/* about ' + FORBIDDEN + ' */'));
+check('still ignores a line comment', !scan('// about ' + FORBIDDEN));
+check('a // inside a string does not hide the rest of the line',
+  scan('const u = "http://x"; ' + PLAIN));
 
 console.log('manifest');
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));

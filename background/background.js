@@ -73,6 +73,11 @@ function persist() {
 }
 
 async function hydrate() {
+  // A worker already running its own export always wins. This only fills in
+  // what a restart wiped; without the guard, stale session state could
+  // overwrite a live run the moment anything re-entered here.
+  if (state.running) return;
+
   try {
     const got = await chrome.storage.session.get(['runState', 'lastFolderIssue']);
     if (got.runState) Object.assign(state, got.runState);
@@ -80,9 +85,27 @@ async function hydrate() {
   } catch (_) {
     /* nothing worth restoring */
   }
+
+  // A run is driven from the content script, so a closed tab or a killed
+  // worker leaves `running: true` in session storage with nobody to clear it,
+  // and the popup shows "Downloading 12 of 400" for ever. A restored run is
+  // only believable if this worker is the one running it — and it is not, or
+  // this function would have returned above.
+  if (state.running) {
+    state.running = false;
+    state.phase = 'idle';
+    state.message = 'The last run was interrupted.';
+  }
 }
 
-const hydrated = hydrate();
+// Two names on purpose. `hydrating` is the promise to await; `hydrated` is the
+// boolean a listener that must answer synchronously can read. Keeping only the
+// promise, named like a boolean, meant `if (hydrated)` was true even on a cold
+// worker with nothing in memory.
+let hydrated = false;
+const hydrating = hydrate().then(() => {
+  hydrated = true;
+});
 
 function setPhase(phase, message) {
   state.phase = phase;
@@ -140,72 +163,163 @@ async function pooled(items, limit, worker, onProgress) {
   return results;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /**
- * One media file.
+ * One media file, with the same backoff the ratings endpoint gets.
+ *
+ * A media run is hundreds of requests where a ratings run is a handful, so
+ * this is where rate limiting actually shows up — and it had no retry at all,
+ * while the far less exposed ratings path had four.
  *
  * A failure is recorded, not thrown: one dead CDN link should cost the user
  * that file, not the other three hundred.
  */
 async function fetchMedia(item) {
-  try {
-    const res = await fetch(item.url);
-    if (!res.ok) return { item, error: 'HTTP ' + res.status };
-    const buf = await res.arrayBuffer();
-    return { item, bytes: new Uint8Array(buf) };
-  } catch (err) {
-    return { item, error: err?.message || String(err) };
+  if (!item.url) return { item, error: 'no direct link' };
+
+  let wait = 400;
+  for (let attempt = 0; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(item.url);
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        return { item, bytes: new Uint8Array(buf) };
+      }
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || attempt === 3) return { item, error: 'HTTP ' + res.status };
+    } catch (err) {
+      if (attempt === 3) return { item, error: err?.message || String(err) };
+    }
+    await sleep(wait);
+    wait *= 2;
   }
+
+  return { item, error: 'gave up' };
+}
+
+/**
+ * A folder per run, so extracting the same product twice does not overwrite
+ * the first export. getFileHandle(create:true) truncates without asking, and
+ * the download path would have uniquified instead — the two save routes
+ * disagreed about what a repeat run means. SiteGiant solves this the same way.
+ */
+function runFolderName(now) {
+  const d = now || new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
 
 /* ------------------------------------------------------------------ *
  * Saving
  * ------------------------------------------------------------------ */
 
-async function ensureOffscreen() {
-  const existing = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT']
-  });
-  if (existing.length) return;
+/**
+ * The offscreen document, created at most once.
+ *
+ * The in-flight promise is memoised as well as checked, because getContexts()
+ * is a snapshot: two exports starting together both saw zero contexts and both
+ * called createDocument(), and the second rejects with "Only a single offscreen
+ * document may be created". That rejection used to be swallowed and the run
+ * fell back to chrome.downloads — silently re-entering the naming contest the
+ * offscreen document exists to avoid.
+ */
+let offscreenReady = null;
 
-  await chrome.offscreen.createDocument({
-    url: 'offscreen/offscreen.html',
-    reasons: ['BLOBS'],
-    justification:
-      'Writes the export into the folder the user chose, using the File System ' +
-      'Access API, which a service worker cannot reach.'
-  });
-}
+function ensureOffscreen() {
+  if (offscreenReady) return offscreenReady;
 
-/** Bytes to base64, in chunks — apply() on a huge array overflows the stack. */
-function toBase64(bytes) {
-  const CHUNK = 0x8000;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
-}
-
-async function saveToChosenFolder(base64, filename) {
-  try {
-    await ensureOffscreen();
-    const reply = await chrome.runtime.sendMessage({
-      target: 'offscreen-writer',
-      segments: ['Shopee Review Media'],
-      filename,
-      base64
+  offscreenReady = (async () => {
+    const existing = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT']
     });
+    if (existing.length) return;
 
-    if (reply?.ok) return reply;
+    try {
+      await chrome.offscreen.createDocument({
+        url: 'offscreen/offscreen.html',
+        reasons: ['BLOBS'],
+        justification:
+          'Writes the export into the folder the user chose, using the File System ' +
+          'Access API, which a service worker cannot reach.'
+      });
+    } catch (err) {
+      // Lost the race to another caller: the document exists, which is all
+      // this function promised.
+      if (!/single offscreen document/i.test(err?.message || '')) throw err;
+    }
+  })().finally(() => {
+    // Cleared so a document closed by Chrome can be recreated later.
+    offscreenReady = null;
+  });
 
-    // Not an error worth stopping for: no folder chosen yet, or the permission
-    // lapsed. Both are settled in Options, and the download fallback still
-    // produces the file meanwhile.
-    if (reply?.reason) lastFolderIssue = reply.reason;
-    return null;
-  } catch (_) {
-    return null;
-  }
+  return offscreenReady;
+}
+
+/* ------------------------------------------------------------------ *
+ * Handing the archive to the writer
+ *
+ * Through IndexedDB, not through a message. See the header of
+ * offscreen/offscreen.js for why base64-over-sendMessage had to go.
+ * ------------------------------------------------------------------ */
+const DB_NAME = 'shopee-review-media-extractor';
+const DB_VERSION = 2;
+const PAYLOADS = 'payloads';
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+      if (!db.objectStoreNames.contains(PAYLOADS)) db.createObjectStore(PAYLOADS);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function stashPayload(key, bytes) {
+  return openDb().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(PAYLOADS, 'readwrite');
+    tx.objectStore(PAYLOADS).put(bytes, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+
+function dropPayload(key) {
+  return openDb().then((db) => new Promise((resolve) => {
+    const tx = db.transaction(PAYLOADS, 'readwrite');
+    tx.objectStore(PAYLOADS).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  })).catch(() => {});
+}
+
+/** Waits for a download to settle, so "saved" is a fact and not a hope. */
+function verifyDownload(downloadId) {
+  return new Promise((resolve) => {
+    const done = (delta) => {
+      if (delta.id !== downloadId || !delta.state) return;
+      if (delta.state.current === 'in_progress') return;
+      chrome.downloads.onChanged.removeListener(done);
+      chrome.downloads.search({ id: downloadId }).then((r) => resolve(r[0] || null));
+    };
+    chrome.downloads.onChanged.addListener(done);
+    // Already finished before the listener attached.
+    chrome.downloads.search({ id: downloadId }).then((r) => {
+      const item = r[0];
+      if (item && item.state !== 'in_progress') {
+        chrome.downloads.onChanged.removeListener(done);
+        resolve(item);
+      }
+    });
+  });
+}
+
+function basename(path) {
+  return String(path || '').split(/[\\/]/).pop();
 }
 
 /**
@@ -217,23 +331,70 @@ async function saveToChosenFolder(base64, filename) {
  * honours unless another extension overrides it, and answering about our own
  * download would mean answering about everyone's.
  */
-async function saveArchive(bytes, filename) {
-  const base64 = toBase64(bytes);
+async function saveArchive(bytes, filename, runFolder) {
+  const key = 'export-' + filename + '-' + bytes.length;
+  const segments = ['Shopee Review Media', runFolder];
 
-  const written = await saveToChosenFolder(base64, filename);
-  if (written) {
+  let reply = null;
+  try {
+    await stashPayload(key, bytes);
+    await ensureOffscreen();
+    reply = await chrome.runtime.sendMessage({
+      target: 'offscreen-writer',
+      action: 'write',
+      key,
+      segments,
+      filename
+    });
+  } catch (err) {
+    lastFolderIssue = 'error';
+    reply = null;
+  }
+
+  if (reply?.ok) {
     lastFolderIssue = null;
-    return { path: written.path, viaFolder: true };
+    return { path: reply.path, viaFolder: true };
+  }
+
+  // Not an error worth stopping for: no folder chosen yet, or the permission
+  // lapsed. Both are settled in Options, and the download still produces the
+  // file meanwhile.
+  if (reply?.reason) lastFolderIssue = reply.reason;
+
+  const path = segments.filter(Boolean).join('/') + '/' + filename;
+
+  if (!reply?.blobUrl) {
+    await dropPayload(key);
+    throw new Error(
+      'Could not save the archive: ' + (reply?.error || reply?.reason || 'no writer available')
+    );
   }
 
   const downloadId = await chrome.downloads.download({
-    url: 'data:application/zip;base64,' + base64,
-    filename: 'Shopee Review Media/' + filename,
-    conflictAction: 'uniquify',
+    url: reply.blobUrl,
+    filename: path,
+    // 'overwrite', matching both sibling extensions. 'uniquify' produced
+    // "shop_product (1).zip" on a re-run, which is the exact shape the
+    // operator has been trained to read as "another extension renamed my file".
+    conflictAction: 'overwrite',
     saveAs: false
   });
 
-  return { downloadId, path: 'Shopee Review Media/' + filename, viaFolder: false };
+  const item = await verifyDownload(downloadId);
+  chrome.runtime.sendMessage({
+    target: 'offscreen-writer', action: 'revoke', url: reply.blobUrl, key
+  }).catch(() => {});
+
+  // A NAME IS NOT WORTH THE RUN. If Chrome saved it elsewhere or under
+  // another name, say so rather than reporting a success that did not happen.
+  const saved = item && basename(item.filename);
+  return {
+    downloadId,
+    path: item?.filename || path,
+    viaFolder: false,
+    failed: item ? item.state !== 'complete' : false,
+    misnamed: saved && saved !== filename ? saved : null
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -245,7 +406,9 @@ async function saveArchive(bytes, filename) {
  *           label }]
  * reviews: the normalised reviews, for reviews.csv
  */
-async function runExport({ items, reviews, shopName, productName, style, description }) {
+async function runExport({
+  items, reviews, shopName, productName, style, description, usedFallback
+}) {
   const settings = await getSettings();
   const chosenStyle = style || settings.filenameStyle;
 
@@ -253,6 +416,11 @@ async function runExport({ items, reviews, shopName, productName, style, descrip
   state.error = null;
   state.done = 0;
   state.total = items.length;
+  // Cleared at the start, so a run that fails or is cancelled cannot leave the
+  // previous run's "Saved 312 files" sitting in the popup as if it were this
+  // one's result.
+  state.lastResult = null;
+  state.usedFallback = !!usedFallback;
   setPhase('fetching', 'Downloading ' + items.length + ' files…');
   startKeepAlive();
 
@@ -319,14 +487,21 @@ async function runExport({ items, reviews, shopName, productName, style, descrip
     const bytes = Zip.createZip(entries);
 
     setPhase('saving', 'Saving…');
-    const saved = await saveArchive(bytes, Naming.zipName(shopName, productName));
+    const saved = await saveArchive(
+      bytes,
+      Naming.zipName(shopName, productName),
+      runFolderName()
+    );
 
     state.lastResult = {
       path: saved.path,
       viaFolder: saved.viaFolder,
       files: ok.length,
       failed: failed.length,
-      folderIssue: lastFolderIssue
+      folderIssue: lastFolderIssue,
+      misnamed: saved.misnamed || null,
+      downloadFailed: !!saved.failed,
+      usedFallback: !!usedFallback
     };
     setPhase('done', 'Saved ' + ok.length + ' files.');
     return state.lastResult;
@@ -398,7 +573,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.target === 'offscreen-writer') return undefined;
 
   (async () => {
-    await hydrated;
+    await hydrating;
 
     switch (msg?.type) {
       case 'getSettings':
@@ -414,11 +589,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return sendResponse({ ...state, folderIssue: lastFolderIssue });
 
       case 'progress':
-        // Relayed by content.js while it walks the review pages.
-        state.running = true;
-        state.phase = 'finding';
+        // Relayed by content.js while it walks the review pages and while the
+        // picker is open. `found` is the running total, not the last page's.
+        state.running = msg.phase !== 'idle';
+        state.phase = msg.phase || 'finding';
         state.page = msg.page || 0;
         state.found = msg.found || 0;
+        state.totalPages = msg.totalPages || null;
         state.message = msg.message || '';
         persist();
         return sendResponse({ ok: true });
@@ -440,7 +617,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       default:
         return sendResponse({ ok: false, error: 'Unknown message: ' + msg?.type });
     }
-  })();
+  })().catch((err) => {
+    // Returning true above promises a reply. Without this, a rejection
+    // anywhere in the switch — storage quota, a context invalidated
+    // mid-update — left the caller awaiting for ever: the Options page would
+    // simply never populate, with nothing shown to explain it.
+    try {
+      sendResponse({ ok: false, error: err?.message || String(err) });
+    } catch (_) {
+      /* the port is already gone; nothing left to tell */
+    }
+  });
 
   return true;
 });

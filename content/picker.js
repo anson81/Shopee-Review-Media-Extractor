@@ -17,6 +17,29 @@
 
   const ROOT_ID = 'srme-root';
 
+  /**
+   * The picker currently on screen, if any.
+   *
+   * close() used to be two different functions: an inner one that resolved
+   * the promise and unbound the key handler, and a module-level one that only
+   * removed the DOM node. The Stop button called the second, so the run was
+   * left awaiting a promise that could never settle, and a capture-phase
+   * keydown listener stayed bound to Shopee's page for the life of the tab —
+   * still live, so a later Escape resolved the long-dead promise.
+   *
+   * Holding the teardown here means there is exactly one way to close.
+   */
+  let active = null;
+
+  function dismiss(result) {
+    if (!active) return;
+    const { resolve, onKey, root } = active;
+    active = null;
+    document.removeEventListener('keydown', onKey, true);
+    root.remove();
+    resolve(result);
+  }
+
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -71,6 +94,9 @@
     const opts = options || {};
 
     return new Promise((resolve) => {
+      // A picker already up belongs to a run still waiting on it. Settle that
+      // one as a cancellation before replacing it, or its run never returns.
+      dismiss(null);
       document.getElementById(ROOT_ID)?.remove();
 
       const rootEl = el('div', null);
@@ -185,8 +211,21 @@
       foot.append(count, el('span', 'srme-spacer'), btnCancel, btnExport);
       panel.appendChild(foot);
 
+      /**
+       * The filter hides tiles; it does not deselect them. That is the right
+       * behaviour, but it used to be a trap: filter to Videos, press Select
+       * none, and the counter still showed the hidden images as selected —
+       * and Export sent them. The count now says out loud how many selected
+       * files the filter is hiding, so what Export will do is never a
+       * surprise.
+       */
       function refresh() {
-        count.textContent = chosen.size + ' of ' + selectable.length + ' selected';
+        const hidden = selectable.filter(
+          (i) => chosen.has(i) && tiles.get(i).style.display === 'none'
+        ).length;
+
+        count.textContent = chosen.size + ' of ' + selectable.length + ' selected' +
+          (hidden ? ' · ' + hidden + ' hidden by the filter and still selected' : '');
         btnExport.disabled = chosen.size === 0;
       }
 
@@ -195,6 +234,7 @@
         for (const [item, tile] of tiles) {
           tile.style.display = want === 'all' || item.kind === want ? '' : 'none';
         }
+        refresh();
       }
 
       /** Acts on what is visible, so "select none" under a filter is not a trap. */
@@ -229,31 +269,30 @@
 
       filter.addEventListener('change', applyFilter);
 
-      function close(result) {
-        document.removeEventListener('keydown', onKey, true);
-        rootEl.remove();
-        resolve(result);
-      }
-
       function onKey(e) {
         if (e.key === 'Escape') {
           e.stopPropagation();
-          close(null);
+          e.preventDefault();
+          dismiss(null);
         }
       }
 
-      btnCancel.addEventListener('click', () => close(null));
-      backdrop.addEventListener('click', () => close(null));
+      btnCancel.addEventListener('click', () => dismiss(null));
+      backdrop.addEventListener('click', () => dismiss(null));
       btnExport.addEventListener('click', () => {
         // Emitted in the original order, not click order, so filenames follow
         // the page and review sequence the user expects.
-        close({
+        dismiss({
           items: items.filter((i) => chosen.has(i)),
           style: style.value
         });
       });
 
       document.addEventListener('keydown', onKey, true);
+
+      // Registered before the node is attached, so any path that closes the
+      // picker from here on goes through dismiss() and settles this promise.
+      active = { resolve, onKey, root: rootEl };
 
       rootEl.append(backdrop, panel);
       document.documentElement.appendChild(rootEl);
@@ -262,7 +301,16 @@
     });
   }
 
+  /**
+   * Close from outside — the Stop button.
+   *
+   * Resolves the pending open() as a cancellation rather than merely deleting
+   * the DOM, so the run it belongs to actually finishes.
+   */
   function close() {
+    dismiss(null);
+    // Belt and braces: a node left by an earlier version of this file, or by
+    // a reload mid-picker, would otherwise sit on the page for ever.
     document.getElementById(ROOT_ID)?.remove();
   }
 

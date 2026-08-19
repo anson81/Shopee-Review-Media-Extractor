@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Shopee Review Media Extractor",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Extract review images, review videos and product content from any Shopee product page. No page limit.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -24,7 +24,10 @@
     "https://*.shopee.co.th/*",
     "https://*.shopee.co.id/*",
     "https://*.susercontent.com/*",
-    "https://raw.githubusercontent.com/*"
+    "https://raw.githubusercontent.com/*",
+    "https://*.shopeemobile.com/*",
+    "https://*.shopeesz.com/*",
+    "https://*.slatic.net/*"
   ],
   "options_page": "options/options.html",
   "action": {
@@ -50,9 +53,16 @@
         "https://shopee.sg/*",
         "https://shopee.ph/*",
         "https://shopee.co.th/*",
-        "https://shopee.co.id/*"
+        "https://shopee.co.id/*",
+        "https://*.shopee.com.my/*",
+        "https://*.shopee.sg/*",
+        "https://*.shopee.ph/*",
+        "https://*.shopee.co.th/*",
+        "https://*.shopee.co.id/*"
       ],
-      "js": ["content/interceptor.js"],
+      "js": [
+        "content/interceptor.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
@@ -63,7 +73,12 @@
         "https://shopee.sg/*",
         "https://shopee.ph/*",
         "https://shopee.co.th/*",
-        "https://shopee.co.id/*"
+        "https://shopee.co.id/*",
+        "https://*.shopee.com.my/*",
+        "https://*.shopee.sg/*",
+        "https://*.shopee.ph/*",
+        "https://*.shopee.co.th/*",
+        "https://*.shopee.co.id/*"
       ],
       "js": [
         "lib/naming.js",
@@ -71,7 +86,9 @@
         "content/picker.js",
         "content/content.js"
       ],
-      "css": ["content/picker.css"],
+      "css": [
+        "content/picker.css"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }

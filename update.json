@@ -1,7 +1,12 @@
 {
-    "version":  "1.0.1",
+    "version":  "1.1.0",
     "notes":  [
-                  "Added a Run probe button in Settings, so checking what Shopee\u0027s endpoints return no longer needs the DevTools console."
+                  "Fixed a bug that could export a different product\u0027s reviews than the one you were looking at.",
+                  "Find media now works on Shopee tabs that were already open, instead of doing nothing.",
+                  "A page range like 5-10 now starts at page 5 instead of page 1.",
+                  "Large exports no longer fail partway - the archive is handed to the writer directly rather than being encoded first.",
+                  "Review videos should now download, and failed downloads are reported instead of counted as saved.",
+                  "Running twice no longer overwrites the first export; each run gets its own dated folder."
               ],
     "files":  [
                   "background/background.js",

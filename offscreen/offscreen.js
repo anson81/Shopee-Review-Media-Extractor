@@ -12,42 +12,63 @@
  *
  * The two sibling extensions spent August 2026 losing that contest to each
  * other — every release made one of them the newest, and the newest silenced
- * the other, so exports kept arriving as "download (2).zip". A file written
- * through a FileSystemDirectoryHandle never touches Chrome's download naming,
- * so no other extension is consulted and there is no contest to lose.
- *
- * This extension makes that worse if it gets it wrong: it is the THIRD one on
- * the same machine. Writing through a handle is what keeps it from disturbing
- * the other two at all.
+ * the other. A file written through a FileSystemDirectoryHandle never touches
+ * Chrome's download naming, so there is no contest to lose.
  *
  * The File System Access API needs a document, and an MV3 service worker is
- * not one — hence an offscreen document rather than doing this in
- * background.js.
+ * not one — hence an offscreen document.
+ *
+ * HOW THE BYTES GET HERE.
+ *
+ * Not by message. The archive used to be base64'd and passed through
+ * chrome.runtime.sendMessage, which JSON-serialises it: a 50 MB export became
+ * a ~67 MB string, held simultaneously as raw bytes, a binary string, the
+ * base64, the serialised copy and the decoded copy. Message passing has a size
+ * ceiling and btoa() throws RangeError outright past roughly 400 MB, and both
+ * failures landed in a bare catch that fell back to Chrome's downloads — the
+ * exact naming contest this file exists to avoid, silently, on precisely the
+ * large exports this extension is built for.
+ *
+ * The worker now stores the bytes in IndexedDB, which is shared same-origin
+ * and holds a Uint8Array natively, and sends only a key. Nothing is copied and
+ * nothing is encoded.
  */
 
 const DB_NAME = 'shopee-review-media-extractor';
+const DB_VERSION = 2;
 const STORE = 'handles';
+const PAYLOADS = 'payloads';
 /** Where exports go. Deliberately NOT the key the self-updater uses. */
 const OUTPUT_KEY = 'outputFolder';
 
 function idb() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      if (!db.objectStoreNames.contains(PAYLOADS)) db.createObjectStore(PAYLOADS);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-async function idbGet(key) {
-  const db = await idb();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
+function idbGet(store, key) {
+  return idb().then((db) => new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).get(key);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
-  });
+  }));
+}
+
+function idbDelete(store, key) {
+  return idb().then((db) => new Promise((resolve) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  }));
 }
 
 /**
@@ -65,56 +86,80 @@ async function folderFor(root, segments) {
 }
 
 /**
- * Base64 to bytes, in chunks.
+ * Save one archive.
  *
- * A review export can be tens of megabytes, and atob() on the whole string at
- * once holds the decoded copy and the source string in memory together. The
- * caller sends base64 because structured clone across the message boundary
- * does not carry a Uint8Array usefully.
+ * Returns { ok: true, path } when it reached the chosen folder, or
+ * { ok: false, reason, blobUrl } when it could not — with a blob URL the
+ * worker can hand to chrome.downloads instead. The URL is made here because
+ * URL.createObjectURL does not exist in a service worker.
+ *
+ * 'no-folder' and 'permission' are worth telling apart, because both are
+ * fixed in Options and neither is a bug.
  */
-function bytesFromBase64(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
+async function write({ key, segments, filename }) {
+  const bytes = await idbGet(PAYLOADS, key);
+  if (!bytes) return { ok: false, reason: 'no-payload' };
+
+  try {
+    const root = await idbGet(STORE, OUTPUT_KEY);
+
+    if (root) {
+      // requestPermission() needs a user gesture and there is none here, so
+      // this can only ever check. Options re-grants it.
+      const granted = await root.queryPermission({ mode: 'readwrite' });
+      if (granted === 'granted') {
+        const dir = await folderFor(root, segments);
+        const handle = await dir.getFileHandle(filename, { create: true });
+        const writable = await handle.createWritable();
+        try {
+          await writable.write(bytes);
+        } finally {
+          // Closing is what commits the file. Skipping it on a failed write
+          // would leave a zero-byte file that looks like a success.
+          await writable.close();
+        }
+        await idbDelete(PAYLOADS, key);
+        return { ok: true, path: segments.filter(Boolean).concat(filename).join('/') };
+      }
+
+      return { ok: false, reason: 'permission', blobUrl: blobUrlFor(bytes) };
+    }
+
+    return { ok: false, reason: 'no-folder', blobUrl: blobUrlFor(bytes) };
+  } catch (err) {
+    // Still offer the download route: a run that produced the bytes should
+    // not lose them to a folder problem.
+    return {
+      ok: false,
+      reason: 'error',
+      error: (err && err.message) || String(err),
+      blobUrl: blobUrlFor(bytes)
+    };
+  }
 }
 
-/**
- * Reports why it could not write, rather than just failing.
- *
- * The caller falls back to chrome.downloads on ANY failure, so the run still
- * produces a file — but 'no-folder' and 'permission' are worth telling the
- * seller apart, because both are fixed in Options and neither is a bug.
- */
-async function write({ segments, filename, base64 }) {
-  const root = await idbGet(OUTPUT_KEY);
-  if (!root) return { ok: false, reason: 'no-folder' };
-
-  // requestPermission() needs a user gesture and there is none here, so this
-  // can only ever check. Options re-grants it.
-  const granted = await root.queryPermission({ mode: 'readwrite' });
-  if (granted !== 'granted') return { ok: false, reason: 'permission' };
-
-  const dir = await folderFor(root, segments);
-  const handle = await dir.getFileHandle(filename, { create: true });
-  const writable = await handle.createWritable();
+function blobUrlFor(bytes) {
   try {
-    await writable.write(bytesFromBase64(base64));
-  } finally {
-    // Closing is what commits the file. Skipping it on a failed write would
-    // leave a zero-byte file that looks like a successful save.
-    await writable.close();
+    return URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
+  } catch (_) {
+    return null;
   }
-
-  const parts = segments.filter(Boolean).concat(filename);
-  return { ok: true, path: parts.join('/') };
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.target !== 'offscreen-writer') return undefined;
 
+  if (msg.action === 'revoke') {
+    try { URL.revokeObjectURL(msg.url); } catch (_) { /* already gone */ }
+    if (msg.key) idbDelete(PAYLOADS, msg.key);
+    sendResponse({ ok: true });
+    return undefined;
+  }
+
   write(msg)
     .then(sendResponse)
-    .catch((err) => sendResponse({ ok: false, reason: 'error', error: err?.message || String(err) }));
+    .catch((err) => sendResponse({
+      ok: false, reason: 'error', error: err?.message || String(err)
+    }));
   return true;
 });

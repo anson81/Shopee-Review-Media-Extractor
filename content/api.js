@@ -205,21 +205,27 @@
    * caller asking it to. A short page means the server had no more to give —
    * asking again would return the same nothing.
    *
-   * opts: { origin, hostname, ids, maxPages, pageDelayMs, fetchImpl,
-   *         onPage(pageNumber, reviews), shouldStop() }
+   * opts: { origin, hostname, ids, fromPage, toPage, pageDelayMs, fetchImpl,
+   *         onPage(pageNumber, reviews, totalSoFar), shouldStop() }
+   *
+   * fromPage/toPage are 1-based and inclusive; toPage null means "to the end".
    */
   async function fetchReviews(opts) {
     const {
-      origin, hostname, ids, maxPages,
+      origin, hostname, ids,
+      fromPage = 1,
+      toPage = null,
       pageDelayMs = DEFAULT_PAGE_DELAY_MS,
       fetchImpl, onPage, shouldStop
     } = opts;
 
     const all = [];
     const limit = PAGE_SIZE;
-    let page = 0;
+    // Zero-based index of the page being requested. Starting at fromPage - 1
+    // is what makes "5-10" skip the first four pages instead of fetching them.
+    let page = Math.max(0, fromPage - 1);
 
-    while (maxPages == null || page < maxPages) {
+    while (toPage == null || page < toPage) {
       if (typeof shouldStop === 'function' && shouldStop()) break;
 
       const url = ratingsUrl(origin, ids, page * limit, limit);
@@ -231,7 +237,10 @@
       const pageNumber = page + 1;
       const reviews = raw.map((r, i) => normaliseRating(r, pageNumber, i, hostname));
       all.push(...reviews);
-      if (typeof onPage === 'function') onPage(pageNumber, reviews);
+      // The running total is passed out, because the caller reporting
+      // batch.length as a cumulative count made the popup read the same
+      // number on every page of a long run.
+      if (typeof onPage === 'function') onPage(pageNumber, reviews, all.length);
 
       // A short page is the end. Checked AFTER the page is kept, so its
       // reviews are not thrown away.
@@ -245,26 +254,35 @@
   }
 
   /**
-   * Parse "1-20", "all", "" or "7" into a page count.
-   * Returns null for "everything", which fetchReviews reads as no limit.
+   * Parse "1-20", "5-10", "all", "" or "7" into a page window.
+   *
+   * Returns { from, to } with 1-based inclusive pages; `to` is null for
+   * "everything". This used to return a bare page COUNT, which threw the
+   * lower bound away — "5-10" fetched pages 1 to 10. The common "1-20" form
+   * hid it, because there the start happens to be 1.
    */
   function parsePageRange(input) {
     const s = String(input == null ? '' : input).trim().toLowerCase();
-    if (s === '' || s === 'all') return null;
+    if (s === '' || s === 'all') return { from: 1, to: null };
 
     const range = s.match(/^(\d+)\s*-\s*(\d+)$/);
     if (range) {
-      const to = Number(range[2]);
-      return to > 0 ? to : null;
+      let from = Number(range[1]);
+      let to = Number(range[2]);
+      if (from < 1) from = 1;
+      if (to < 1) return { from: 1, to: null };
+      // A reversed range is a typo, not a request for nothing.
+      if (to < from) { const t = from; from = to; to = t; }
+      return { from, to };
     }
 
     const single = s.match(/^(\d+)$/);
     if (single) {
       const n = Number(single[1]);
-      return n > 0 ? n : null;
+      return n > 0 ? { from: 1, to: n } : { from: 1, to: null };
     }
 
-    return null;
+    return { from: 1, to: null };
   }
 
   return {
