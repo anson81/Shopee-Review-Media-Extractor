@@ -18,24 +18,27 @@
   /**
    * Reviews requested per call.
    *
-   * Shopee's own UI asks for 6 at a time, which would mean 50 calls for 300
-   * reviews. The endpoint accepts a larger limit; 50 is chosen as a value the
-   * endpoint has served reliably while staying modest enough not to look like
-   * scraping.
-   *
-   * NOT YET CONFIRMED AGAINST A LIVE PAGE. The spec calls for pinning the real
-   * working maximum here during implementation, which needs a logged-in
-   * product page. If a run returns short pages consistently, this is the first
-   * number to check — see readRatings(), which treats a short page as the end
-   * of the reviews and would stop early if the server silently caps the limit.
+   * CONFIRMED ON A LIVE PAGE (shopee.com.my, 19 Aug 2026): limit=6 returns 6,
+   * limit=50 returns 50, and limit=100 returns HTTP 200 with no ratings array
+   * at all. So 50 is the real ceiling and asking for more yields nothing
+   * rather than less — which readRatings would have read as "no more
+   * reviews", quietly ending every run after one page.
    */
   const PAGE_SIZE = 50;
 
   /** Ratings endpoint, relative to the site origin. */
   const RATINGS_PATH = '/api/v2/item/get_ratings';
 
-  /** Product detail, for main images, variants, video and description. */
-  const DETAIL_PATH = '/api/v4/pdp/get_pc';
+  /**
+   * Product detail, for main images, variants, video and description.
+   *
+   * /api/v4/item/get, not /api/v4/pdp/get_pc. Both answer 200, and get_pc
+   * looked like the natural choice — but measured on a live product it has no
+   * `images` array at all, only a single `image`, and no video_info_list.
+   * item/get carries images, video_info_list and the models. /api/v2/item/get
+   * is a 404.
+   */
+  const DETAIL_PATH = '/api/v4/item/get';
 
   const DEFAULT_PAGE_DELAY_MS = 300;
   const MAX_RETRIES = 4;
@@ -120,13 +123,29 @@
     return origin + RATINGS_PATH + '?' + params.toString();
   }
 
+  /**
+   * itemid/shopid, not item_id/shop_id — those are get_pc's spelling, and
+   * this is item/get. Confirmed against a live page.
+   */
   function detailUrl(origin, ids) {
     const params = new URLSearchParams({
-      item_id: String(ids.itemid),
-      shop_id: String(ids.shopid),
-      detail_level: '0'
+      itemid: String(ids.itemid),
+      shopid: String(ids.shopid)
     });
     return origin + DETAIL_PATH + '?' + params.toString();
+  }
+
+  /**
+   * The item object out of a detail response.
+   *
+   * item/get returns the item AS `data`; other shapes nest it under
+   * `data.item`. Reading both means a Shopee change of shape degrades to
+   * "found nothing" rather than throwing.
+   */
+  function readItem(json) {
+    if (!json || typeof json !== 'object') return null;
+    const data = json.data && typeof json.data === 'object' ? json.data : json;
+    return (data.item && typeof data.item === 'object') ? data.item : data;
   }
 
   /**
@@ -313,6 +332,7 @@
     ratingsUrl,
     detailUrl,
     readRatings,
+    readItem,
     normaliseRating,
     fetchJson,
     fetchReviews,

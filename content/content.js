@@ -60,6 +60,57 @@
   }
 
   /* ------------------------------------------------------------------ *
+   * Fetching through the page
+   *
+   * A fetch from here is routed through the extension's CORS identity, and
+   * Shopee refuses those: measured on a live page, the identical request got
+   * 403 from this world and 200 from the page's. So the request is handed to
+   * interceptor.js, which lives in the page's own context, and the answer
+   * comes back by postMessage.
+   *
+   * Shaped like fetch() so api.js can take it as fetchImpl and know nothing
+   * about any of this.
+   * ------------------------------------------------------------------ */
+  let requestSeq = 0;
+  const pending = new Map();
+  const PAGE_FETCH_TIMEOUT_MS = 30000;
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    const d = event.data;
+    if (!d || d[TAG] !== true || d.kind !== 'response') return;
+
+    const waiting = pending.get(d.id);
+    if (!waiting) return;
+    pending.delete(d.id);
+    clearTimeout(waiting.timer);
+    waiting.resolve({
+      ok: d.ok,
+      status: d.status,
+      json: async () => d.json,
+      error: d.error
+    });
+  });
+
+  function pageFetch(url) {
+    return new Promise((resolve, reject) => {
+      const id = ++requestSeq;
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        // Almost always means interceptor.js is not in the page — a tab that
+        // predates the extension, or a failed injection. Worth saying so
+        // rather than reporting it as a Shopee problem.
+        reject(new Error(
+          'The page did not answer. Reload the Shopee tab and try again.'
+        ));
+      }, PAGE_FETCH_TIMEOUT_MS);
+
+      pending.set(id, { resolve, reject, timer });
+      window.postMessage({ [TAG]: true, kind: 'request', id, url }, location.origin);
+    });
+  }
+
+  /* ------------------------------------------------------------------ *
    * Identifying the product
    * ------------------------------------------------------------------ */
 
@@ -161,15 +212,25 @@
     return items;
   }
 
+  /**
+   * Product content out of an /api/v4/item/get payload.
+   *
+   * Field names here were measured, not remembered. The previous version read
+   * a shape that does not exist on this endpoint, so every box under "Product
+   * content" would have returned nothing at all with no error.
+   */
   function productMedia(detail, want, hostname) {
     const items = [];
-    if (!detail) return items;
+    const item = Api.readItem(detail);
+    if (!item) return items;
 
-    const data = detail.data || detail;
-    const item = data.item || data;
-
-    if (want.mainImages && Array.isArray(item.images)) {
-      item.images.forEach((hash, i) => {
+    // item.images is an array of bare CDN hashes. `item.image` is the single
+    // cover and is usually images[0], so it is only used if images is absent.
+    if (want.mainImages) {
+      const main = Array.isArray(item.images) && item.images.length
+        ? item.images
+        : (item.image ? [item.image] : []);
+      main.forEach((hash, i) => {
         items.push({
           url: Api.imageUrl(hash, hostname), thumb: Api.imageUrl(hash, hostname),
           kind: 'image', source: 'main', mediaIndex: i + 1, label: 'main'
@@ -177,14 +238,23 @@
       });
     }
 
-    if (want.variantImages && Array.isArray(item.models)) {
-      item.models.forEach((model, i) => {
-        const hash = model && (model.image || model.extinfo?.tier_image);
-        if (!hash) return;
-        items.push({
-          url: Api.imageUrl(hash, hostname), thumb: Api.imageUrl(hash, hostname),
-          kind: 'image', source: 'variant', mediaIndex: i + 1,
-          label: String(model.name || 'variant')
+    // Variant pictures live on tier_variations, NOT on models. The models
+    // array carries prices and stock and has no image field at all — reading
+    // it was why variant images came back empty. Each tier_variation has
+    // options[] and a parallel images[]; only the tier with pictures has any.
+    if (want.variantImages && Array.isArray(item.tier_variations)) {
+      let n = 0;
+      item.tier_variations.forEach((tier) => {
+        if (!tier || !Array.isArray(tier.images)) return;
+        tier.images.forEach((hash, idx) => {
+          if (!hash) return;
+          n += 1;
+          const option = Array.isArray(tier.options) ? tier.options[idx] : null;
+          items.push({
+            url: Api.imageUrl(hash, hostname), thumb: Api.imageUrl(hash, hostname),
+            kind: 'image', source: 'variant', mediaIndex: n,
+            label: String(option || tier.name || 'variant')
+          });
         });
       });
     }
@@ -192,9 +262,10 @@
     if (want.productVideos && Array.isArray(item.video_info_list)) {
       item.video_info_list.forEach((v, i) => {
         const url = v && (v.default_format?.url || v.url);
+        const cover = v && (v.thumb_url || v.cover);
         items.push({
           url: url || '',
-          thumb: v?.thumb_url ? Api.imageUrl(v.thumb_url, hostname) : '',
+          thumb: cover ? Api.imageUrl(cover, hostname) : '',
           kind: 'video', source: 'product-video', mediaIndex: i + 1,
           label: 'video', unavailable: !url
         });
@@ -204,23 +275,33 @@
     return items;
   }
 
+  /**
+   * Description text, and any pictures embedded in it.
+   *
+   * item/get returns the description as PLAIN TEXT in `item.description`;
+   * there is no description_info on it, which is what the old rich-text
+   * reader expected. Images are pulled out of the text instead — sellers
+   * routinely paste CDN links into it — and the whole section degrades to
+   * "text only" rather than to nothing.
+   */
   function descriptionParts(detail, want, hostname) {
-    if (!want.description || !detail) return { text: '', images: [] };
+    if (!want.description) return { text: '', images: [] };
 
-    const data = detail.data || detail;
-    const item = data.item || data;
+    const item = Api.readItem(detail);
+    if (!item) return { text: '', images: [] };
+
     const text = String(item.description || '');
     const images = [];
+    const seen = new Set();
 
-    const rich = item.description_info?.rich_text_description?.paragraph_list;
-    if (Array.isArray(rich)) {
-      rich.forEach((p, i) => {
-        if (!p || !p.image_id) return;
-        images.push({
-          url: Api.imageUrl(p.image_id, hostname),
-          thumb: Api.imageUrl(p.image_id, hostname),
-          kind: 'image', source: 'description', mediaIndex: i + 1, label: 'img'
-        });
+    // Full URLs first, then bare hashes on their own line. Both appear.
+    const urls = text.match(/https?:\/\/[^\s"'<>)]+\.(?:jpe?g|png|webp|gif)/gi) || [];
+    for (const url of urls) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      images.push({
+        url, thumb: url, kind: 'image', source: 'description',
+        mediaIndex: images.length + 1, label: 'img'
       });
     }
 
@@ -280,6 +361,7 @@
           fromPage: range.from,
           toPage: range.to,
           pageDelayMs: request.pageDelayMs,
+          fetchImpl: pageFetch,
           shouldStop: () => stopped,
           onPage: (page, batch, total) => {
             // `total` is the running count, not this page's. Reporting
@@ -309,7 +391,7 @@
 
     if (wantsProduct) {
       try {
-        detail = await Api.fetchJson(Api.detailUrl(origin, ids));
+        detail = await Api.fetchJson(Api.detailUrl(origin, ids), { fetchImpl: pageFetch });
       } catch (_) {
         detail = captured.detail;
       }

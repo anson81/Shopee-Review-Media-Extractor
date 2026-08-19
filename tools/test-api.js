@@ -107,6 +107,14 @@ check('an unexpected shape yields nothing rather than throwing',
   A.readRatings({ nope: true }).length === 0);
 check('null yields nothing', A.readRatings(null).length === 0);
 
+console.log('detail payload shape');
+// item/get returns the item AS data; other shapes nest it under data.item.
+check('reads an item returned as data',
+  A.readItem({ data: { images: ['a'] } })?.images?.length === 1);
+check('reads an item nested under data.item',
+  A.readItem({ data: { item: { images: ['a', 'b'] } } })?.images?.length === 2);
+check('an empty response yields null rather than throwing', A.readItem(null) === null);
+
 console.log('page range parsing');
 const range = (s) => {
   const r = A.parsePageRange(s);
@@ -129,7 +137,7 @@ console.log('endpoints are what we think they are');
 // M12/M13: replacing these constants with nonsense used to leave the suite
 // green, so a typo in the one file that knows Shopee's API was undetectable.
 check('ratings path', A.RATINGS_PATH === '/api/v2/item/get_ratings', A.RATINGS_PATH);
-check('detail path', A.DETAIL_PATH === '/api/v4/pdp/get_pc', A.DETAIL_PATH);
+check('detail path', A.DETAIL_PATH === '/api/v4/item/get', A.DETAIL_PATH);
 check('ratings url carries the ids and paging',
   (() => {
     const u = new URL(A.ratingsUrl('https://shopee.com.my', { shopid: '1', itemid: '2' }, 100, 50));
@@ -143,8 +151,8 @@ check('detail url carries the ids',
   (() => {
     const u = new URL(A.detailUrl('https://shopee.com.my', { shopid: '1', itemid: '2' }));
     return u.pathname === A.DETAIL_PATH &&
-      u.searchParams.get('shop_id') === '1' &&
-      u.searchParams.get('item_id') === '2';
+      u.searchParams.get('shopid') === '1' &&
+      u.searchParams.get('itemid') === '2';
   })());
 
 console.log('normalising a rating');

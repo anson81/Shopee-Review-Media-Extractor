@@ -1,7 +1,8 @@
 {
-    "version":  "1.1.2",
+    "version":  "1.2.0",
     "notes":  [
-                  "The probe now runs inside the page itself, tries three ways of asking Shopee, and records what Shopee\u0027s own page sends - so a refusal tells us why instead of just that."
+                  "Reviews now actually load. Shopee was refusing the extension\u0027s requests with a 403; they are now made by the page itself, which is what Shopee accepts.",
+                  "Product content now reads the endpoint that actually carries it, so main images, variant images and product videos should appear instead of nothing."
               ],
     "files":  [
                   "background/background.js",

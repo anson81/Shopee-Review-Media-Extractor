@@ -61,21 +61,74 @@
     }
   }
 
+  /** Replies bypass the buffer: an answer nobody is waiting for is useless. */
+  function reply(payload) {
+    try {
+      window.postMessage(Object.assign({ [TAG]: true }, payload), window.location.origin);
+    } catch (_) {
+      /* never break the page */
+    }
+  }
+
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const d = event.data;
-    if (!d || d[TAG] !== true || d.kind !== 'ready') return;
+    if (!d || d[TAG] !== true) return;
 
-    listening = true;
-    const held = buffer;
-    buffer = [];
-    for (const message of held) {
-      try {
-        window.postMessage(message, window.location.origin);
-      } catch (_) {
-        /* ignore */
+    if (d.kind === 'ready') {
+      listening = true;
+      const held = buffer;
+      buffer = [];
+      for (const message of held) {
+        try {
+          window.postMessage(message, window.location.origin);
+        } catch (_) {
+          /* ignore */
+        }
       }
+      return;
     }
+
+    /* ---- fetch on the content script's behalf ------------------------ *
+     *
+     * THE REASON THIS EXISTS.
+     *
+     * Since Chrome 85 a fetch from an isolated-world content script is routed
+     * through the EXTENSION's CORS identity. The cookies still go, but the
+     * request no longer looks like the page asking for its own data — and
+     * Shopee answers every one of them 403, with an auth-gate body rather
+     * than a 404. Measured on a live page: identical request, isolated world
+     * 403, this world 200. No special headers were needed; only the world.
+     *
+     * So the content script stopped fetching and asks here instead. This is
+     * the page's own JavaScript context, so a same-origin request is
+     * indistinguishable from one Shopee makes for itself.
+     * ------------------------------------------------------------------ */
+    if (d.kind !== 'request' || typeof d.id !== 'number') return;
+
+    // Deliberately NOT a general-purpose proxy. Anything on the page can post
+    // into this listener, so it will only ever fetch same-origin /api/ paths —
+    // the ones this extension already has permission to read.
+    let target;
+    try {
+      target = new URL(String(d.url || ''), location.origin);
+    } catch (_) {
+      return reply({ kind: 'response', id: d.id, ok: false, status: 0, error: 'bad url' });
+    }
+    if (target.origin !== location.origin || !/^\/api\//.test(target.pathname)) {
+      return reply({ kind: 'response', id: d.id, ok: false, status: 0, error: 'refused' });
+    }
+
+    fetch(target.href, { credentials: 'include' })
+      .then((res) => res.text().then((text) => {
+        let json = null;
+        try { json = JSON.parse(text); } catch (_) { /* not json */ }
+        reply({ kind: 'response', id: d.id, ok: res.ok, status: res.status, json });
+      }))
+      .catch((err) => reply({
+        kind: 'response', id: d.id, ok: false, status: 0,
+        error: String((err && err.message) || err)
+      }));
   });
 
   function relay(url, json) {
