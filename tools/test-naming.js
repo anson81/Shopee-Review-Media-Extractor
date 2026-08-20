@@ -179,7 +179,9 @@ const worst = N.assignPaths(
 
 // Exactly what Windows ends up with: the seller's folder, our dated folder,
 // the folder Explorer creates from the zip's name, then the archive contents.
-const WINDOWS_PREFIX = 'C:\\Users\\QFM Zaty\\Documents\\';
+// A realistic length, not a real machine. The test cares about how many
+// characters the prefix eats, and this repo is public.
+const WINDOWS_PREFIX = 'C:\\Users\\Seller Name\\Documents\\';
 const extracted = worst.map((w) =>
   WINDOWS_PREFIX + 'Shopee Review Media\\2026-08-20\\' +
   zip.replace(/\.zip$/, '') + '\\' + w.path.replace(/\//g, '\\'));
