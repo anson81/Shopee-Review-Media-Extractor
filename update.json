@@ -1,8 +1,7 @@
 {
-    "version":  "1.3.1",
+    "version":  "1.3.2",
     "notes":  [
-                  "Fixed the \u0027Extension context invalidated\u0027 error. It appeared when the extension was reloaded while a Shopee tab was still open, and now says to reload the page instead of failing silently.",
-                  "The popup now explains why there is no Open folder button after a folder save, and offers a one-click switch to Chrome downloads so you get one."
+                  "Added a README with a download link and install steps, so the extension can be installed from GitHub the same way as the other two."
               ],
     "files":  [
                   "background/background.js",
@@ -27,6 +26,7 @@
                   "popup/popup.css",
                   "popup/popup.html",
                   "popup/popup.js",
+                  "README.md",
                   "update.json"
               ]
 }
