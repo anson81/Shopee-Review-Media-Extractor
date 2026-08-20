@@ -107,9 +107,32 @@ const hydrating = hydrate().then(() => {
   hydrated = true;
 });
 
+/**
+ * Paint the toolbar icon with what is happening.
+ *
+ * The picker is an in-page overlay, so clicking it closes the popup — and the
+ * whole fetch, zip and save then runs with nothing on screen at all. An export
+ * that failed looked exactly like an export that had not started. The badge is
+ * the only surface that survives the popup closing.
+ */
+function setBadge(phase) {
+  const look = {
+    finding: { text: '…', colour: '#f59e0b' },
+    choosing: { text: '…', colour: '#f59e0b' },
+    fetching: { text: '…', colour: '#f59e0b' },
+    saving: { text: '…', colour: '#f59e0b' },
+    done: { text: 'OK', colour: '#16a34a' },
+    error: { text: '!', colour: '#dc2626' }
+  }[phase] || { text: '', colour: '#000000' };
+
+  chrome.action.setBadgeText({ text: look.text }).catch(() => {});
+  chrome.action.setBadgeBackgroundColor({ color: look.colour }).catch(() => {});
+}
+
 function setPhase(phase, message) {
   state.phase = phase;
   if (message !== undefined) state.message = message;
+  setBadge(phase);
   persist();
 }
 
@@ -351,39 +374,31 @@ async function saveArchive(bytes, filename, runFolder) {
     reply = null;
   }
 
-  if (reply?.ok) {
+  // The writer reached the chosen folder.
+  if (reply?.ok && !reply.viaDownload) {
     lastFolderIssue = null;
     return { path: reply.path, viaFolder: true };
   }
 
-  // Not an error worth stopping for: no folder chosen yet, or the permission
-  // lapsed. Both are settled in Options, and the download still produces the
-  // file meanwhile.
+  // It could not, and started a download instead. Not an error worth stopping
+  // for: no folder chosen yet, or the permission lapsed. Both are settled in
+  // Options, and the file still arrives meanwhile.
   if (reply?.reason) lastFolderIssue = reply.reason;
 
-  const path = segments.filter(Boolean).join('/') + '/' + filename;
-
-  if (!reply?.blobUrl) {
+  if (!reply?.ok) {
     await dropPayload(key);
     throw new Error(
       'Could not save the archive: ' + (reply?.error || reply?.reason || 'no writer available')
     );
   }
 
-  const downloadId = await chrome.downloads.download({
-    url: reply.blobUrl,
-    filename: path,
-    // 'overwrite', matching both sibling extensions. 'uniquify' produced
-    // "shop_product (1).zip" on a re-run, which is the exact shape the
-    // operator has been trained to read as "another extension renamed my file".
-    conflictAction: 'overwrite',
-    saveAs: false
-  });
-
-  const item = await verifyDownload(downloadId);
+  const path = reply.path;
+  const item = await verifyDownload(reply.downloadId);
   chrome.runtime.sendMessage({
     target: 'offscreen-writer', action: 'revoke', url: reply.blobUrl, key
   }).catch(() => {});
+
+  const downloadId = reply.downloadId;
 
   // A NAME IS NOT WORTH THE RUN. If Chrome saved it elsewhere or under
   // another name, say so rather than reporting a success that did not happen.

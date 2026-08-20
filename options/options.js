@@ -86,11 +86,28 @@ const HANDLE_KEY = 'extensionDir';
 /** Where exports are written. Separate from the folder used for self-updates. */
 const OUTPUT_KEY = 'outputFolder';
 
+/**
+ * MUST match the version the worker and the offscreen writer open with.
+ *
+ * This page opened version 1 while both of those had moved to 2 for the
+ * payloads store. IndexedDB refuses to open an existing database at a LOWER
+ * version — it throws VersionError — so once an export had run, this page
+ * could no longer read or write the folder handle at all. The folder picker
+ * appeared to work and saved nothing, which sent every export down the
+ * downloads fallback with no folder to write to.
+ *
+ * Anyone adding a store must bump this in all three files together.
+ */
+const DB_VERSION = 2;
+const PAYLOADS = 'payloads';
+
 function openDb() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      if (!db.objectStoreNames.contains(PAYLOADS)) db.createObjectStore(PAYLOADS);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);

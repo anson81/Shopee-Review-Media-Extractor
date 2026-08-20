@@ -100,6 +100,8 @@ async function write({ key, segments, filename }) {
   const bytes = await idbGet(PAYLOADS, key);
   if (!bytes) return { ok: false, reason: 'no-payload' };
 
+  let reason = null;
+
   try {
     const root = await idbGet(STORE, OUTPUT_KEY);
 
@@ -121,28 +123,53 @@ async function write({ key, segments, filename }) {
         await idbDelete(PAYLOADS, key);
         return { ok: true, path: segments.filter(Boolean).concat(filename).join('/') };
       }
-
-      return { ok: false, reason: 'permission', blobUrl: blobUrlFor(bytes) };
+      reason = 'permission';
+    } else {
+      reason = 'no-folder';
     }
-
-    return { ok: false, reason: 'no-folder', blobUrl: blobUrlFor(bytes) };
   } catch (err) {
-    // Still offer the download route: a run that produced the bytes should
-    // not lose them to a folder problem.
-    return {
-      ok: false,
-      reason: 'error',
-      error: (err && err.message) || String(err),
-      blobUrl: blobUrlFor(bytes)
-    };
+    reason = 'error';
+    return downloadInstead(bytes, segments, filename, reason, (err && err.message) || String(err));
   }
+
+  return downloadInstead(bytes, segments, filename, reason, null);
 }
 
-function blobUrlFor(bytes) {
+/**
+ * The fallback, started FROM HERE rather than from the service worker.
+ *
+ * A blob URL belongs to the context that created it. The worker cannot call
+ * URL.createObjectURL at all, so the URL had to be made here and was then
+ * handed to the worker to download — which is exactly the arrangement Chrome
+ * is least reliable about. Calling chrome.downloads from the document that
+ * owns the URL keeps the two together. Offscreen documents are extension
+ * contexts, so the downloads permission applies here just as it does there.
+ */
+async function downloadInstead(bytes, segments, filename, reason, error) {
+  const path = segments.filter(Boolean).concat(filename).join('/');
+
+  let url = null;
   try {
-    return URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
-  } catch (_) {
-    return null;
+    url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
+  } catch (err) {
+    return { ok: false, reason: 'blob-failed', error: (err && err.message) || String(err) };
+  }
+
+  try {
+    const downloadId = await chrome.downloads.download({
+      url,
+      filename: path,
+      conflictAction: 'overwrite',
+      saveAs: false
+    });
+    return { ok: true, viaDownload: true, downloadId, path, reason, error, blobUrl: url };
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    return {
+      ok: false,
+      reason: reason || 'download-failed',
+      error: (err && err.message) || String(err)
+    };
   }
 }
 

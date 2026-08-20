@@ -168,6 +168,14 @@
       for (const item of items) {
         const tile = el('div', 'srme-tile' + (item.unavailable ? ' srme-dead' : ' srme-on'));
 
+        // A square box that holds the picture, rather than a picture asked to
+        // be square. aspect-ratio only applies while height is auto, and
+        // Shopee's own stylesheet sets a height on img — so the thumbnails
+        // came out as thin letterbox strips you could not recognise anything
+        // in. The padding-top trick derives height from WIDTH, which no rule
+        // on the image can undo.
+        const media = el('div', 'srme-media');
+
         const img = document.createElement('img');
         img.className = 'srme-thumb';
         img.alt = '';
@@ -177,12 +185,13 @@
         img.referrerPolicy = 'no-referrer';
         img.dataset.src = item.thumb || item.url;
         lazy.observe(img);
-        tile.appendChild(img);
+        media.appendChild(img);
 
         if (item.kind === 'video') {
-          tile.appendChild(el('div', 'srme-play', '▶'));
+          media.appendChild(el('div', 'srme-play', '▶'));
         }
-        tile.appendChild(el('span', 'srme-badge', item.unavailable ? 'n/a' : item.kind));
+        media.appendChild(el('span', 'srme-badge', item.unavailable ? 'n/a' : item.kind));
+        tile.appendChild(media);
 
         const meta = el('div', 'srme-meta');
         meta.appendChild(el('strong', null, sourceLabel(item)));

@@ -142,12 +142,44 @@
   cursor: not-allowed;
 }
 
+/*
+  A square hole, and the picture fills it.
+
+  Every declaration here is !important on purpose. This modal is injected into
+  a page whose stylesheet we do not control and cannot predict, and Shopee's
+  own img rules were winning — the thumbnails rendered as thin strips a few
+  pixels tall, which is useless for choosing pictures. Defending a handful of
+  layout properties is worth it; nothing outside this file is affected.
+
+  padding-top: 100% makes the height equal the WIDTH, so the box is square
+  whatever the grid column works out to, and no height rule on the image can
+  change that. aspect-ratio alone could not do this: it is ignored the moment
+  anything sets an explicit height.
+*/
+#srme-root .srme-media {
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
+  height: 0 !important;
+  padding-top: 100% !important;
+  overflow: hidden !important;
+  background: #e5e7eb !important;
+}
+
 #srme-root .srme-thumb {
-  display: block;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: cover;
-  background: #e5e7eb;
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  /* contain, not cover: a cropped square hides the very thing being judged.
+     The grey box shows through as letterboxing, which is honest. */
+  object-fit: contain !important;
+  background: #e5e7eb !important;
 }
 
 #srme-root .srme-meta {

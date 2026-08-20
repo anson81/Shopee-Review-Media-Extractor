@@ -1,8 +1,9 @@
 {
-    "version":  "1.2.0",
+    "version":  "1.2.1",
     "notes":  [
-                  "Reviews now actually load. Shopee was refusing the extension\u0027s requests with a 403; they are now made by the page itself, which is what Shopee accepts.",
-                  "Product content now reads the endpoint that actually carries it, so main images, variant images and product videos should appear instead of nothing."
+                  "Fixed exports producing no file at all. The Settings page could no longer save your chosen folder, and the download fallback was started from the wrong place.",
+                  "Thumbnails in the picker are now square, so you can actually see what each one is.",
+                  "The toolbar icon now shows what is happening, so a run that fails while the popup is closed no longer looks like nothing happened."
               ],
     "files":  [
                   "background/background.js",
