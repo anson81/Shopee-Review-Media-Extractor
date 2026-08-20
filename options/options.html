@@ -22,6 +22,31 @@
           it for good.
         </p>
 
+        <fieldset class="choice">
+          <legend>How to save</legend>
+
+          <label>
+            <input type="radio" name="save-via" id="save-folder" value="folder" />
+            <span>
+              <strong>Into the folder you choose</strong>
+              Nothing can rename the files. Chrome cannot open that folder for
+              you afterwards — no extension is allowed to — so the popup shows
+              you the path instead.
+            </span>
+          </label>
+
+          <label>
+            <input type="radio" name="save-via" id="save-downloads" value="downloads" />
+            <span>
+              <strong>Through Chrome downloads</strong>
+              Gives you an <em>Open folder</em> button after each export. The
+              trade is that any other extension holding the downloads
+              permission can rename the file — which is how exports used to end
+              up as <code>download (2).zip</code>.
+            </span>
+          </label>
+        </fieldset>
+
         <p id="output-status" class="status">Checking…</p>
         <div class="buttons">
           <button id="pick-output" type="button">Choose the exports folder…</button>

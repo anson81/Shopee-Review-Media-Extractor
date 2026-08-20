@@ -48,6 +48,17 @@
     };
   });
 
+  // PRODUCT ITEMS, so the Review/Product tabs have something to separate.
+  const product = [
+    { url: swatch(10), thumb: swatch(10), kind: 'image', source: 'main', mediaIndex: 1, label: 'main' },
+    { url: swatch(40), thumb: swatch(40), kind: 'image', source: 'main', mediaIndex: 2, label: 'main' },
+    { url: swatch(80), thumb: swatch(80), kind: 'image', source: 'variant', mediaIndex: 1, label: 'Baby Pink' },
+    { url: swatch(120), thumb: swatch(120), kind: 'image', source: 'variant', mediaIndex: 2, label: 'Teal Blue' },
+    { url: swatch(200), thumb: swatch(200), kind: 'video', source: 'product-video', mediaIndex: 1, label: 'video' },
+    { url: swatch(300), thumb: swatch(300), kind: 'image', source: 'description', mediaIndex: 1, label: 'img' }
+  ];
+  items.push(...product);
+
   window.__pickerResult = 'pending';
   window.SRME_Picker.open(items, { style: 'page-review-type' })
     .then((r) => { window.__pickerResult = r ? 'exported' : 'cancelled'; });

@@ -262,3 +262,52 @@
   color: #6b7280;
   font-size: 14px;
 }
+
+/* Tabs. Only rendered when the run actually has both kinds of media. */
+#srme-root .srme-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--srme-line, #e5e7eb);
+  background: #fff;
+}
+
+#srme-root .srme-tab {
+  padding: 9px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #6b7280;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+#srme-root .srme-tab:hover { color: #111827; }
+
+#srme-root .srme-tab-on {
+  color: #ee4d2d;
+  border-bottom-color: #ee4d2d;
+}
+
+/* The filename style, with its worked example. */
+#srme-root .srme-style {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#srme-root .srme-style-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+#srme-root .srme-style-eg {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+}

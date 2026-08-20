@@ -222,3 +222,52 @@ textarea#probe-out {
   color: #b45309;
   font-weight: 600;
 }
+
+/* The save-method choice. Two options with a real trade-off between them, so
+   each one states its own cost rather than leaving it to be discovered. */
+.choice {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.choice legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.choice label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 7px 0;
+  cursor: pointer;
+}
+
+.choice label + label {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 11px;
+}
+
+.choice input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+
+.choice span {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.choice strong {
+  display: block;
+  font-size: 13px;
+  color: var(--ink, #1f2937);
+}

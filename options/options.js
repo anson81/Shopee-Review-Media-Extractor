@@ -35,6 +35,7 @@ async function save() {
     type: 'saveSettings',
     values: {
       filenameStyle: $('style').value,
+      saveVia: $('save-downloads').checked ? 'downloads' : 'folder',
       pageDelayMs: delay,
       concurrency,
       updateSource: {
@@ -165,6 +166,18 @@ async function refreshOutputFolder() {
   const forget = $('forget-output');
   const pick = $('pick-output');
   const handle = await idbGet(OUTPUT_KEY);
+
+  // A remembered folder that is not being used should say so, rather than
+  // claiming to be saving files it is not.
+  if ($('save-downloads').checked) {
+    status.textContent = handle
+      ? `Saving through Chrome downloads. "${handle.name}" is remembered but not in use.`
+      : 'Saving through Chrome downloads.';
+    status.className = 'status';
+    pick.textContent = handle ? 'Change folder…' : 'Choose the exports folder…';
+    forget.hidden = !handle;
+    return;
+  }
 
   if (!handle) {
     status.textContent =
@@ -528,6 +541,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderUpdate(await send({ type: 'checkUpdate' }));
   });
   $('install').addEventListener('click', install);
+
+  $('save-folder').checked = settings.saveVia !== 'downloads';
+  $('save-downloads').checked = settings.saveVia === 'downloads';
+  $('save-folder').addEventListener('change', () => { save(); refreshOutputFolder(); });
+  $('save-downloads').addEventListener('change', () => { save(); refreshOutputFolder(); });
 
   $('pick-output').addEventListener('click', pickOutputFolder);
   $('forget-output').addEventListener('click', async () => {

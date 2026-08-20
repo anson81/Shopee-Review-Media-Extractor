@@ -147,6 +147,50 @@
       panel.appendChild(head);
 
       /* toolbar ---------------------------------------------------------- */
+      /* tabs -------------------------------------------------------------- *
+       *
+       * Reviews and product content are two different jobs — "give me the
+       * buyers' photos" and "give me the listing's own pictures" — and mixing
+       * several hundred of the first with a handful of the second made the
+       * second impossible to find. Tabs only appear when there is actually
+       * something in both, so a reviews-only run is not made to click through
+       * a tab bar for no reason.
+       */
+      const REVIEW_SOURCES = new Set(['review']);
+      const isReview = (i) => REVIEW_SOURCES.has(i.source);
+
+      const groups = [
+        { id: 'all', label: 'Everything', match: () => true },
+        { id: 'review', label: 'Review media', match: isReview },
+        { id: 'product', label: 'Product content', match: (i) => !isReview(i) }
+      ].filter((g) => g.id === 'all' || items.some(g.match));
+
+      const showTabs = groups.length > 2;
+      let activeGroup = 'all';
+
+      const tabs = el('div', 'srme-tabs');
+      const tabButtons = new Map();
+
+      if (showTabs) {
+        for (const group of groups) {
+          const count = items.filter(group.match).length;
+          const b = el('button', 'srme-tab', group.label + ' (' + count + ')');
+          b.addEventListener('click', () => {
+            activeGroup = group.id;
+            for (const [id, node] of tabButtons) {
+              node.classList.toggle('srme-tab-on', id === activeGroup);
+            }
+            applyFilter();
+          });
+          tabButtons.set(group.id, b);
+          tabs.appendChild(b);
+        }
+        tabButtons.get('all').classList.add('srme-tab-on');
+        panel.appendChild(tabs);
+      }
+
+      const matcherFor = (id) => (groups.find((g) => g.id === id) || groups[0]).match;
+
       const tools = el('div', 'srme-tools');
       const btnAll = el('button', null, 'Select all');
       const btnNone = el('button', null, 'Select none');
@@ -164,11 +208,24 @@
         filter.appendChild(o);
       });
 
+      /*
+       * The filename style.
+       *
+       * It read "Name: date, buyer" and looked like it did nothing, because
+       * what it changes is not on this screen — it is the names of the files
+       * inside the zip, which you only see after extracting. So it now says
+       * what it is for and shows a worked EXAMPLE that updates as you change
+       * it. A control whose effect is invisible needs to describe its own
+       * effect.
+       */
+      const styleWrap = el('label', 'srme-style');
+      styleWrap.appendChild(el('span', 'srme-style-label', 'Saved file names'));
+
       const style = document.createElement('select');
       [
-        ['page-review-type', 'Name: page, review, type'],
-        ['date-buyer', 'Name: date, buyer'],
-        ['sequential', 'Name: sequential']
+        ['page-review-type', 'By page and review'],
+        ['date-buyer', 'By date and buyer'],
+        ['sequential', 'Numbered in order']
       ].forEach(([value, label]) => {
         const o = document.createElement('option');
         o.value = value;
@@ -177,7 +234,21 @@
       });
       if (opts.style) style.value = opts.style;
 
-      tools.append(btnAll, btnNone, btnInvert, filter, el('span', 'srme-spacer'), style);
+      const example = el('span', 'srme-style-eg');
+      const EXAMPLES = {
+        'page-review-type': 'page01_r03_img1.jpg',
+        'date-buyer': '2026-08-20_ahmad-bin-ali_img1.jpg',
+        sequential: '0007.jpg'
+      };
+      const showExample = () => {
+        example.textContent = 'e.g. ' + (EXAMPLES[style.value] || '');
+      };
+      showExample();
+      style.addEventListener('change', showExample);
+
+      styleWrap.append(style, example);
+
+      tools.append(btnAll, btnNone, btnInvert, filter, el('span', 'srme-spacer'), styleWrap);
       panel.appendChild(tools);
 
       /* grid ------------------------------------------------------------- */
@@ -330,8 +401,10 @@
 
       function applyFilter() {
         const want = filter.value;
+        const inGroup = matcherFor(activeGroup);
         for (const [item, tile] of tiles) {
-          tile.style.display = want === 'all' || item.kind === want ? '' : 'none';
+          const typeOk = want === 'all' || item.kind === want;
+          tile.style.display = typeOk && inGroup(item) ? '' : 'none';
         }
         refresh();
       }

@@ -16,6 +16,8 @@ const DEFAULTS = {
   filenameStyle: Naming.STYLES.PAGE_REVIEW_TYPE,
   pageDelayMs: 300,
   concurrency: 4,
+  // 'folder' protects the filename; 'downloads' lets Chrome open the folder.
+  saveVia: 'folder',
   updateSource: {
     owner: 'anson81',
     repo: 'Shopee-Review-Media-Extractor',
@@ -354,7 +356,7 @@ function basename(path) {
  * honours unless another extension overrides it, and answering about our own
  * download would mean answering about everyone's.
  */
-async function saveArchive(bytes, filename, runFolder) {
+async function saveArchive(bytes, filename, runFolder, preferDownload) {
   const key = 'export-' + filename + '-' + bytes.length;
   const segments = ['Shopee Review Media', runFolder];
 
@@ -367,7 +369,8 @@ async function saveArchive(bytes, filename, runFolder) {
       action: 'write',
       key,
       segments,
-      filename
+      filename,
+      preferDownload
     });
   } catch (err) {
     lastFolderIssue = 'error';
@@ -507,7 +510,8 @@ async function runExport({
     const saved = await saveArchive(
       bytes,
       Naming.zipName(shopName, productName),
-      runFolderName()
+      runFolderName(),
+      settings.saveVia === 'downloads'
     );
 
     // Kept for revealFolder(), which needs the download id to open Chrome's

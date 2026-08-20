@@ -1,8 +1,10 @@
 {
-    "version":  "1.2.5",
+    "version":  "1.3.0",
     "notes":  [
-                  "Windows can now extract the zip. The product name was appearing twice in the path - once in the folder Windows creates and again inside the archive - which made Windows refuse with \u0027Destination Path Too Long\u0027.",
-                  "Archive names are shorter, and the files sit directly in reviews/ and product/ instead of inside another folder."
+                  "The picker now has tabs, so review media and product content are separate lists instead of one long mixed one.",
+                  "The filename dropdown says what it is for and shows an example of the names you will get.",
+                  "Settings now lets you choose between saving into your folder or through Chrome downloads - downloads gives you an Open folder button after each export.",
+                  "Fixed an export being named after a login prompt instead of the product when the tab was signed out."
               ],
     "files":  [
                   "background/background.js",

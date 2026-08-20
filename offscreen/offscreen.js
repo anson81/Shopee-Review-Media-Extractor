@@ -96,11 +96,18 @@ async function folderFor(root, segments) {
  * 'no-folder' and 'permission' are worth telling apart, because both are
  * fixed in Options and neither is a bug.
  */
-async function write({ key, segments, filename }) {
+async function write({ key, segments, filename, preferDownload }) {
   const bytes = await idbGet(PAYLOADS, key);
   if (!bytes) return { ok: false, reason: 'no-payload' };
 
   let reason = null;
+
+  // The seller asked for downloads. Writing into the chosen folder would work
+  // perfectly well and leave them without the Open folder button, which is
+  // the whole reason they picked this.
+  if (preferDownload) {
+    return downloadInstead(bytes, segments, filename, 'by-choice', null);
+  }
 
   try {
     const root = await idbGet(STORE, OUTPUT_KEY);

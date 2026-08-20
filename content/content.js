@@ -161,16 +161,44 @@
     return null;
   }
 
+  /**
+   * Text that is on the page but is not the product.
+   *
+   * A live export was named "shopee_Verify-to-Continue.zip": the tab was
+   * logged out, Shopee had put a verification prompt in the first h1, and the
+   * archive was named after it. Reading the first heading on the page trusts
+   * whatever Shopee happens to be showing, which on a bad day is a login wall.
+   */
+  const NOT_A_PRODUCT =
+    /verify|continue|log ?in|sign ?up|sign ?in|captcha|error|not found|loading/i;
+
   function productName() {
-    const heading = document.querySelector('h1, [class*="product-briefing"] span');
-    const text = heading?.textContent?.trim();
-    if (text) return text.slice(0, 120);
-    return (document.title || 'product').split('|')[0].trim();
+    // og:title is what Shopee publishes as the product's name for sharing.
+    // It is not affected by anything overlaying the page.
+    const og = document.querySelector('meta[property="og:title"]')?.content?.trim();
+    if (og && !NOT_A_PRODUCT.test(og)) return og.slice(0, 120);
+
+    // Then the visible heading, but only if it looks like a product.
+    for (const node of document.querySelectorAll('h1, [class*="product-briefing"] span')) {
+      const text = node.textContent?.trim();
+      if (text && text.length > 3 && !NOT_A_PRODUCT.test(text)) return text.slice(0, 120);
+    }
+
+    const title = (document.title || '').split('|')[0].trim();
+    if (title && !NOT_A_PRODUCT.test(title)) return title.slice(0, 120);
+
+    // Better a name that admits it is unknown than one that is confidently
+    // wrong — the ids at least identify the product later.
+    const ids = productIds();
+    return ids ? 'product-' + ids.itemid : 'product';
   }
 
   function shopName() {
-    const node = document.querySelector('[class*="shop-name"], [class*="page-product__shop"] a');
-    return node?.textContent?.trim()?.slice(0, 80) || 'shopee';
+    for (const sel of ['[class*="shop-name"]', '[class*="page-product__shop"] a']) {
+      const text = document.querySelector(sel)?.textContent?.trim();
+      if (text && !NOT_A_PRODUCT.test(text)) return text.slice(0, 80);
+    }
+    return 'shopee';
   }
 
   /* ------------------------------------------------------------------ *
