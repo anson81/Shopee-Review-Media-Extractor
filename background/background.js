@@ -440,8 +440,10 @@ async function runExport({
   startKeepAlive();
 
   try {
-    const root = Naming.rootFolderName(shopName, productName);
-    const planned = Naming.assignPaths(items, chosenStyle, root);
+    // No root folder inside the archive: Windows creates one named after the
+    // zip when extracting, and a second copy of a 100-character Shopee title
+    // inside it is what produced 'Destination Path Too Long'.
+    const planned = Naming.assignPaths(items, chosenStyle);
 
     const fetched = await pooled(planned, settings.concurrency, fetchMedia, (done, total) => {
       state.done = done;
@@ -483,14 +485,14 @@ async function runExport({
         }));
 
       entries.push({
-        path: root + '/reviews.csv',
+        path: 'reviews.csv',
         data: new TextEncoder().encode(Csv.buildReviewsCsv(rows))
       });
     }
 
     if (description) {
       entries.push({
-        path: root + '/description/description.txt',
+        path: 'description/description.txt',
         data: new TextEncoder().encode(String(description))
       });
     }

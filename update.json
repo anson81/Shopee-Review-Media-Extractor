@@ -1,9 +1,8 @@
 {
-    "version":  "1.2.4",
+    "version":  "1.2.5",
     "notes":  [
-                  "Settings now shows the chosen folder clearly, and the button says Change folder instead of looking like you never picked one.",
-                  "The popup shows the version, checks for updates, and offers an Open folder button after a download.",
-                  "Added a way to preview the popup and the picker without installing, so layout problems are measured instead of guessed at."
+                  "Windows can now extract the zip. The product name was appearing twice in the path - once in the folder Windows creates and again inside the archive - which made Windows refuse with \u0027Destination Path Too Long\u0027.",
+                  "Archive names are shorter, and the files sit directly in reviews/ and product/ instead of inside another folder."
               ],
     "files":  [
                   "background/background.js",

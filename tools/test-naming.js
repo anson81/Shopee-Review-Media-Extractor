@@ -99,23 +99,30 @@ const dupes = [
   { kind: 'image', source: 'review', page: 1, reviewIndex: 1, mediaIndex: 1, url: 'b.jpg' },
   { kind: 'image', source: 'review', page: 1, reviewIndex: 1, mediaIndex: 1, url: 'c.jpg' }
 ];
-const assigned = N.assignPaths(dupes, N.STYLES.PAGE_REVIEW_TYPE, 'shop_product');
+const assigned = N.assignPaths(dupes, N.STYLES.PAGE_REVIEW_TYPE);
 const paths = assigned.map((x) => x.path);
 check('gives every colliding item a distinct path',
   new Set(paths).size === paths.length, paths.join(' | '));
 check('the first keeps the clean name',
-  paths[0] === 'shop_product/reviews/page01_r01_img1.jpg', paths[0]);
+  paths[0] === 'reviews/page01_r01_img1.jpg', paths[0]);
 check('later ones get a numeric suffix',
   paths[1].endsWith('_2.jpg') && paths[2].endsWith('_3.jpg'), paths.join(' | '));
-check('all paths sit under the root folder',
-  paths.every((p) => p.startsWith('shop_product/')));
+
+// The archive must NOT repeat the product name inside itself. Windows creates
+// a folder named after the zip when extracting, so an inner copy put the same
+// 100-character Shopee title in the path twice and Windows refused the
+// extraction outright with "Destination Path Too Long".
+check('nothing is nested under a product folder',
+  paths.every((p) => p.split('/').length === 2), paths.join(' | '));
+check('paths start at a known subfolder',
+  paths.every((p) => /^(reviews|product|description)\//.test(p)), paths.join(' | '));
 
 // Case-insensitive filesystems are the trap: two names differing only in case
 // are one file on Windows, and the archive would quietly lose one.
 const caseClash = N.assignPaths([
   { kind: 'image', source: 'variant', label: 'Blue', mediaIndex: 1, url: 'a.jpg' },
   { kind: 'image', source: 'variant', label: 'blue', mediaIndex: 1, url: 'b.jpg' }
-], N.STYLES.PAGE_REVIEW_TYPE, 'shop');
+], N.STYLES.PAGE_REVIEW_TYPE);
 check('treats names differing only by case as colliding',
   caseClash[0].path.toLowerCase() !== caseClash[1].path.toLowerCase(),
   caseClash.map((x) => x.path).join(' | '));
@@ -125,7 +132,7 @@ check('sequential numbering stays unique across a big run',
     const many = Array.from({ length: 250 }, () => (
       { kind: 'image', source: 'review', page: 1, reviewIndex: 1, mediaIndex: 1, url: 'x.jpg' }
     ));
-    const out = N.assignPaths(many, N.STYLES.SEQUENTIAL, 'shop');
+    const out = N.assignPaths(many, N.STYLES.SEQUENTIAL);
     return new Set(out.map((x) => x.path)).size === 250;
   })());
 
@@ -137,29 +144,51 @@ check('zip name survives a hostile shop name',
   !/[<>:"/\\|?*]/.test(N.zipName('Shop/Name*', 'Prod?')),
   N.zipName('Shop/Name*', 'Prod?'));
 check('a very long pair is truncated',
-  N.zipName('s'.repeat(200), 'p'.repeat(200)).length <= 124);
-check('root folder matches the zip name without the extension',
-  N.zipName('My Shop', 'My Product') === N.rootFolderName('My Shop', 'My Product') + '.zip');
+  N.zipName('s'.repeat(200), 'p'.repeat(200)).length <= 75,
+  String(N.zipName('s'.repeat(200), 'p'.repeat(200)).length));
 
-// The check above compares the two FUNCTIONS to each other, which passed
-// happily while the real archive disagreed: assignPaths re-sanitised the root
-// with the 80-char filename cap while the zip was named at 120, so a long
-// name produced a folder inside the archive that did not match the archive.
-// The only honest test goes through the path assignment.
-console.log('long names, end to end');
+/*
+ * WINDOWS MAX_PATH, END TO END.
+ *
+ * A real export failed to extract: "The file name(s) would be too long for the
+ * destination folder." A Shopee title is a keyword list, not a name —
+ *
+ *   QFM Melody Batwing Knitwear Top (#3299) | Oversize Modest Blouse Muslimah
+ *   Baju Knit Long Sleeve
+ *
+ * — and it was being spent twice, once in the folder Windows creates on
+ * extraction and again in a root folder inside the archive.
+ *
+ * So the whole extracted path is reconstructed here, exactly as Windows builds
+ * it, and checked against the real 260 limit. Testing the pieces separately is
+ * what let this ship.
+ */
+console.log('windows MAX_PATH, end to end');
 const longShop = 'Super Duper Gadget Emporium Malaysia Official Store';
-const longProduct = 'Wireless Noise Cancelling Bluetooth Earbuds Waterproof Sport Headphones 2026';
-const realRoot = N.rootFolderName(longShop, longProduct);
-const realZip = N.zipName(longShop, longProduct);
-const assignedLong = N.assignPaths(
-  [{ kind: 'image', source: 'review', page: 1, reviewIndex: 1, mediaIndex: 1, url: 'a.jpg' }],
-  N.STYLES.PAGE_REVIEW_TYPE,
-  realRoot
+const longProduct =
+  'QFM Melody Batwing Knitwear Top (#3299) | Oversize Modest Blouse Muslimah Baju Knit Long Sleeve';
+
+const zip = N.zipName(longShop, longProduct);
+const worst = N.assignPaths(
+  Array.from({ length: 3 }, () => ({
+    kind: 'image', source: 'review', page: 99, reviewIndex: 99, mediaIndex: 9,
+    ctime: 1752451200, buyer: 'a-very-long-buyer-name-indeed', url: 'a.jpg'
+  })),
+  N.STYLES.DATE_BUYER
 );
-const archiveRoot = assignedLong[0].path.split('/')[0];
-check('the folder inside the archive matches the archive name',
-  archiveRoot + '.zip' === realZip,
-  archiveRoot + '.zip  vs  ' + realZip);
+
+// Exactly what Windows ends up with: the seller's folder, our dated folder,
+// the folder Explorer creates from the zip's name, then the archive contents.
+const WINDOWS_PREFIX = 'C:\\Users\\QFM Zaty\\Documents\\';
+const extracted = worst.map((w) =>
+  WINDOWS_PREFIX + 'Shopee Review Media\\2026-08-20\\' +
+  zip.replace(/\.zip$/, '') + '\\' + w.path.replace(/\//g, '\\'));
+
+const longest = Math.max(...extracted.map((p) => p.length));
+check('a worst-case extracted path stays under Windows MAX_PATH',
+  longest < 260, longest + ' chars: ' + extracted[0]);
+check('the product name appears only once in the path',
+  extracted[0].split('Batwing').length - 1 <= 1, extracted[0]);
 
 console.log('astral characters');
 // slice() cuts UTF-16 code units, so truncation could split an emoji and
@@ -177,14 +206,13 @@ const wide = N.assignPaths(
   Array.from({ length: 3 }, () => ({
     kind: 'image', source: 'variant', label: 'L'.repeat(200), mediaIndex: 1, url: 'a.jpg'
   })),
-  N.STYLES.PAGE_REVIEW_TYPE,
-  N.rootFolderName('A'.repeat(80), 'B'.repeat(80))
+  N.STYLES.PAGE_REVIEW_TYPE
 );
 check('a collision suffix cannot push a segment back over the cap',
   wide.every((w) => w.path.split('/').pop().length <= 90),
   wide.map((w) => w.path.split('/').pop().length).join(', '));
 check('the whole in-archive path leaves room for an extract folder',
-  wide.every((w) => w.path.length <= 140),
+  wide.every((w) => w.path.length <= 90),
   'longest ' + Math.max(...wide.map((w) => w.path.length)));
 
 console.log('more reserved device names');
