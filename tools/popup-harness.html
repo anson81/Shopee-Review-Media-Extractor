@@ -34,7 +34,15 @@
         folderIssue: null, usedFallback: false, misnamed: null, downloadFailed: false
       }
     },
-    update: { phase: 'idle', running: false, lastResult: null }
+    update: { phase: 'idle', running: false, lastResult: null },
+    folder: {
+      phase: 'done', running: false,
+      lastResult: {
+        files: 153, failed: 0, viaFolder: true,
+        path: 'Shopee Review Media/2026-08-20/QFM-Melody-Batwing.zip',
+        folderIssue: null, usedFallback: false, misnamed: null, downloadFailed: false
+      }
+    }
   };
 
   const state = STATES[WHICH] || STATES.done;

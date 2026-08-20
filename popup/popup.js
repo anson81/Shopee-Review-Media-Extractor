@@ -200,11 +200,13 @@ function render(state) {
       where.hidden = true;
     }
 
-    // Only offered for a file that went through downloads, because
-    // chrome.downloads.show() is the only thing that opens a folder and it
-    // needs a download to point at. A file written into the chosen folder
-    // cannot be revealed by any extension API — see revealFolder().
-    $('open-folder').hidden = result.viaFolder || !result.path;
+    // chrome.downloads.show() is the only thing that opens a folder, and it
+    // needs a download to point at. A file written through a directory handle
+    // cannot be revealed by any extension API — so rather than show a button
+    // that would do nothing, the alternative is offered right here.
+    const canReveal = !result.viaFolder && !!result.path;
+    $('open-folder').hidden = !canReveal;
+    $('want-open').hidden = canReveal || !result.path;
 
     // Everything below is something the user would otherwise never learn.
     const notes = [];
@@ -261,6 +263,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (res && res.ok && !res.opened && res.path) {
       setStatus('Saved at ' + res.path);
     }
+  });
+
+  $('use-downloads').addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({
+      type: 'saveSettings',
+      values: { saveVia: 'downloads' }
+    });
+    $('want-open').hidden = true;
+    setStatus('Switched to Chrome downloads. The next export will have an Open folder button.', 'good');
   });
 
   $('update-action').addEventListener('click', async () => {

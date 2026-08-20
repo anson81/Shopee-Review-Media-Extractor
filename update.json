@@ -1,10 +1,8 @@
 {
-    "version":  "1.3.0",
+    "version":  "1.3.1",
     "notes":  [
-                  "The picker now has tabs, so review media and product content are separate lists instead of one long mixed one.",
-                  "The filename dropdown says what it is for and shows an example of the names you will get.",
-                  "Settings now lets you choose between saving into your folder or through Chrome downloads - downloads gives you an Open folder button after each export.",
-                  "Fixed an export being named after a login prompt instead of the product when the tab was signed out."
+                  "Fixed the \u0027Extension context invalidated\u0027 error. It appeared when the extension was reloaded while a Shopee tab was still open, and now says to reload the page instead of failing silently.",
+                  "The popup now explains why there is no Open folder button after a folder save, and offers a one-click switch to Chrome downloads so you get one."
               ],
     "files":  [
                   "background/background.js",

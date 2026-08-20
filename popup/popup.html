@@ -69,6 +69,17 @@
       <p id="where" class="where" hidden></p>
       <button id="open-folder" type="button" hidden
               title="Open the folder this export was saved in">Open folder</button>
+
+      <!--
+        Shown after a folder save, where Chrome genuinely cannot open the
+        folder for us. Putting the trade-off here, at the moment the button is
+        missing, rather than only in Settings where nobody was finding it.
+      -->
+      <div id="want-open" class="want-open" hidden>
+        <span>No <em>Open folder</em> button? Chrome can only open folders for
+          files it downloaded itself.</span>
+        <button id="use-downloads" type="button">Save via downloads instead</button>
+      </div>
       <p id="folder-note" class="note" hidden></p>
     </main>
 

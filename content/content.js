@@ -344,7 +344,44 @@
   /** One run at a time. A second Find while the picker is up orphaned it. */
   let running = false;
 
+  /**
+   * Is this content script still attached to a live extension?
+   *
+   * Reloading the extension does NOT remove the content script already running
+   * in an open page. It keeps running, orphaned, and every chrome.* call it
+   * makes throws "Extension context invalidated" — which showed up as an
+   * uncaught error on the Errors page with no explanation of what to do.
+   *
+   * It is not really a fault, it is the cost of reloading during development,
+   * but an error with no cause and no remedy is worse than the reload itself.
+   */
+  function contextAlive() {
+    try {
+      return !!(chrome.runtime && chrome.runtime.id);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  const RELOADED =
+    'The extension was updated or reloaded. Reload this Shopee page and try again.';
+
+  /** sendMessage that turns an orphaned context into a sentence worth reading. */
+  async function send(msg) {
+    if (!contextAlive()) throw new Error(RELOADED);
+    try {
+      return await chrome.runtime.sendMessage(msg);
+    } catch (err) {
+      const text = String(err?.message || err);
+      if (/context invalidated|Receiving end does not exist/i.test(text)) {
+        throw new Error(RELOADED);
+      }
+      throw err;
+    }
+  }
+
   function report(fields) {
+    if (!contextAlive()) return;
     chrome.runtime.sendMessage(Object.assign({ type: 'progress' }, fields))
       .catch(() => {});
   }
@@ -446,7 +483,7 @@
     const picked = await Picker.open(items, { style: request.style });
     if (!picked) return { cancelled: true };
 
-    const reply = await chrome.runtime.sendMessage({
+    const reply = await send({
       type: 'export',
       payload: {
         items: picked.items,
