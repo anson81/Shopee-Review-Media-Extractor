@@ -172,6 +172,11 @@ async function refreshOutputFolder() {
     return;
   }
 
+  // Backfilled here, not only when the folder is picked, so a folder chosen
+  // before the popup learned to report locations does not have to be chosen
+  // again just to get its name recorded.
+  chrome.storage.local.set({ outputFolderName: handle.name }).catch(() => {});
+
   // mayPrompt: false. Opening Options should report the state, not fire a
   // permission dialog at someone who came here to change something else.
   const writable = await ensureWritable(handle, false);
@@ -196,6 +201,10 @@ async function pickOutputFolder() {
       return;
     }
     await idbSet(OUTPUT_KEY, chosen);
+    // Remembered separately so the popup can say WHERE a file went. A
+    // directory handle cannot be read from the popup, and "Saved 2 files"
+    // with no location is not much better than saying nothing.
+    await chrome.storage.local.set({ outputFolderName: chosen.name });
     await refreshOutputFolder();
   } catch (err) {
     // Cancelling the picker is a decision, not a fault, and Chrome's own

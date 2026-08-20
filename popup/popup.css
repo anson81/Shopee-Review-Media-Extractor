@@ -160,3 +160,14 @@ button:disabled {
   background: #fef2f2;
   color: #991b1b;
 }
+
+/* Where the last export landed. Small, wrapping, selectable - it is a path
+   the seller may want to copy. */
+.where {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #4b5563;
+  word-break: break-all;
+  user-select: text;
+}

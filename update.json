@@ -1,9 +1,8 @@
 {
-    "version":  "1.2.1",
+    "version":  "1.2.2",
     "notes":  [
-                  "Fixed exports producing no file at all. The Settings page could no longer save your chosen folder, and the download fallback was started from the wrong place.",
-                  "Thumbnails in the picker are now square, so you can actually see what each one is.",
-                  "The toolbar icon now shows what is happening, so a run that fails while the popup is closed no longer looks like nothing happened."
+                  "Thumbnails are now large squares you can actually recognise, and no Shopee styling can flatten them.",
+                  "The popup now says where the file was saved, not just that it was saved."
               ],
     "files":  [
                   "background/background.js",

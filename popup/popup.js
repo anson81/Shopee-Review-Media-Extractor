@@ -9,6 +9,13 @@ const $ = (id) => document.getElementById(id);
 
 const PRODUCT_HOSTS = /(^|\.)shopee\.(com\.my|sg|ph|co\.th|co\.id)$/i;
 
+/**
+ * The name of the folder chosen in Options, so a finished run can say WHERE
+ * the file went. The popup cannot read a directory handle itself, and
+ * "Saved 2 files." with no location just sends the seller hunting.
+ */
+let folderName = null;
+
 const WANT_IDS = {
   reviewImages: 'review-images',
   reviewVideos: 'review-videos',
@@ -141,6 +148,19 @@ function render(state) {
     if (result.failed) bits.push(result.failed + ' could not be downloaded');
     setStatus(bits.join(' · ') + '.', result.downloadFailed ? 'error' : 'good');
 
+    // WHERE, not just whether. "Saved 2 files." on its own sent the user
+    // hunting through folders — the extension knew the answer and did not say.
+    const where = $('where');
+    if (result.path) {
+      where.hidden = false;
+      where.textContent = result.viaFolder
+        ? (folderName ? folderName + ' / ' + result.path : result.path)
+        : 'Downloads / ' + result.path;
+      where.title = where.textContent;
+    } else {
+      where.hidden = true;
+    }
+
     // Everything below is something the user would otherwise never learn.
     const notes = [];
     const folder = describeFolderIssue(result.folderIssue);
@@ -184,6 +204,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const settings = await chrome.runtime.sendMessage({ type: 'getSettings' });
   if (settings?.filenameStyle) $('style').value = settings.filenameStyle;
+
+  const stored = await chrome.storage.local.get('outputFolderName');
+  folderName = stored.outputFolderName || null;
 
   $('settings').addEventListener('click', (e) => {
     e.preventDefault();

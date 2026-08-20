@@ -47,6 +47,34 @@
     return node;
   }
 
+  /**
+   * Apply styles that the host page cannot override.
+   *
+   * An inline declaration marked !important sits at the top of the cascade, so
+   * nothing in Shopee's stylesheet can beat it however specific. Reserved for
+   * the handful of properties the picker's layout genuinely depends on — the
+   * ones that had already been flattened twice from the stylesheet alone.
+   */
+  function forceStyle(node, styles) {
+    for (const [prop, value] of Object.entries(styles)) {
+      node.style.setProperty(prop, value, 'important');
+    }
+    return node;
+  }
+
+  /**
+   * How wide a thumbnail should be.
+   *
+   * 130px was too small to tell one knitwear photo from another, which is the
+   * entire job of this screen. This scales with the window instead of picking
+   * one number: roughly six across on a laptop, more on a wide monitor, and
+   * never so small that the picture stops being recognisable.
+   */
+  function tileWidth() {
+    const usable = Math.max(320, window.innerWidth - 220);
+    return Math.max(180, Math.min(300, Math.floor(usable / 6)));
+  }
+
   function sourceLabel(item) {
     switch (item.source) {
       case 'review': return 'Review page ' + item.page;
@@ -154,6 +182,14 @@
 
       /* grid ------------------------------------------------------------- */
       const grid = el('div', 'srme-grid');
+      // Forced for the same reason the tiles are: the column track is what
+      // decides how big a thumbnail ends up, so it cannot be left to a
+      // stylesheet the page could outrank.
+      forceStyle(grid, {
+        display: 'grid',
+        'grid-template-columns': 'repeat(auto-fill, minmax(' + tileWidth() + 'px, 1fr))',
+        gap: '14px'
+      });
       panel.appendChild(grid);
 
       const lazy = makeLazyLoader();
@@ -176,6 +212,28 @@
         // on the image can undo.
         const media = el('div', 'srme-media');
 
+        // SET INLINE, WITH !important, ON PURPOSE.
+        //
+        // The stylesheet already says all of this and Shopee still won: the
+        // thumbnails came out as letterbox slivers twice. An inline
+        // declaration marked important is the top of the cascade — no page
+        // rule, however specific, can beat it — and this modal is injected
+        // into a stylesheet nobody here controls or can predict.
+        //
+        // box-sizing is pinned to content-box because the square depends on
+        // it: height 0 plus padding-top 100% makes the height equal the
+        // WIDTH, and a stray border-box rule is exactly the sort of thing
+        // that quietly flattens it again.
+        forceStyle(media, {
+          position: 'relative',
+          display: 'block',
+          'box-sizing': 'content-box',
+          width: '100%',
+          height: '0',
+          'padding-top': '100%',
+          overflow: 'hidden'
+        });
+
         const img = document.createElement('img');
         img.className = 'srme-thumb';
         img.alt = '';
@@ -184,6 +242,21 @@
         // leaks which product page the seller is working on.
         img.referrerPolicy = 'no-referrer';
         img.dataset.src = item.thumb || item.url;
+        forceStyle(img, {
+          position: 'absolute',
+          top: '0',
+          left: '0',
+          display: 'block',
+          width: '100%',
+          height: '100%',
+          'max-width': 'none',
+          'max-height': 'none',
+          'min-width': '0',
+          'min-height': '0',
+          // contain, not cover: cropping a review photo to a square hides the
+          // part being judged.
+          'object-fit': 'contain'
+        });
         lazy.observe(img);
         media.appendChild(img);
 
