@@ -1,8 +1,7 @@
 {
-    "version":  "1.2.2",
+    "version":  "1.2.3",
     "notes":  [
-                  "Thumbnails are now large squares you can actually recognise, and no Shopee styling can flatten them.",
-                  "The popup now says where the file was saved, not just that it was saved."
+                  "The thumbnail grid no longer collapses. Pictures are now large squares in a properly scrolling list, instead of being squeezed into thin coloured lines."
               ],
     "files":  [
                   "background/background.js",

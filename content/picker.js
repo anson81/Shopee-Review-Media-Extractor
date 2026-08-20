@@ -182,13 +182,30 @@
 
       /* grid ------------------------------------------------------------- */
       const grid = el('div', 'srme-grid');
-      // Forced for the same reason the tiles are: the column track is what
-      // decides how big a thumbnail ends up, so it cannot be left to a
-      // stylesheet the page could outrank.
+      // align-content and grid-auto-rows are the whole ball game here.
+      //
+      // This grid is a flex child with a definite height, and its rows are
+      // auto-sized. In that situation the grid sizes rows to FIT that height
+      // rather than to fit their contents, and the tiles cannot push back:
+      // .srme-tile sets overflow:hidden, which switches off a grid item's
+      // automatic minimum size. So 139 tiles of 356px content were squeezed
+      // into 28 rows of 14px and the pictures became coloured lines.
+      //
+      // Measured, not guessed — it reproduces on a blank local page with no
+      // Shopee stylesheet anywhere near it, which is what finally ruled the
+      // page out. tools/picker-harness.html is that page.
+      //
+      // 'start' stops the rows being stretched or squeezed to the container,
+      // and max-content makes each row as tall as the tile in it. The grid
+      // already has overflow-y:auto, so the overflow becomes scrolling — the
+      // thing that was missing.
       forceStyle(grid, {
         display: 'grid',
         'grid-template-columns': 'repeat(auto-fill, minmax(' + tileWidth() + 'px, 1fr))',
-        gap: '14px'
+        'grid-auto-rows': 'max-content',
+        'align-content': 'start',
+        gap: '14px',
+        'overflow-y': 'auto'
       });
       panel.appendChild(grid);
 
@@ -205,32 +222,32 @@
         const tile = el('div', 'srme-tile' + (item.unavailable ? ' srme-dead' : ' srme-on'));
 
         // A square box that holds the picture, rather than a picture asked to
-        // be square. aspect-ratio only applies while height is auto, and
-        // Shopee's own stylesheet sets a height on img — so the thumbnails
-        // came out as thin letterbox strips you could not recognise anything
-        // in. The padding-top trick derives height from WIDTH, which no rule
-        // on the image can undo.
+        // be square.
         const media = el('div', 'srme-media');
 
-        // SET INLINE, WITH !important, ON PURPOSE.
+        // WHY aspect-ratio AND NOT A PERCENTAGE PADDING.
         //
-        // The stylesheet already says all of this and Shopee still won: the
-        // thumbnails came out as letterbox slivers twice. An inline
-        // declaration marked important is the top of the cascade — no page
-        // rule, however specific, can beat it — and this modal is injected
-        // into a stylesheet nobody here controls or can predict.
+        // Both make the height follow the width, and they are not
+        // interchangeable. A percentage padding resolves to ZERO while the
+        // browser is working out an element's intrinsic height, so the grid
+        // measured every tile as 14px — just the caption — sized the rows to
+        // match, and .srme-tile's overflow:hidden clipped the 315px picture
+        // down to a coloured line. aspect-ratio takes part in that
+        // measurement, so the row ends up as tall as the picture is.
         //
-        // box-sizing is pinned to content-box because the square depends on
-        // it: height 0 plus padding-top 100% makes the height equal the
-        // WIDTH, and a stray border-box rule is exactly the sort of thing
-        // that quietly flattens it again.
+        // Set inline with !important because this modal is injected into a
+        // page whose CSS nobody here controls; an inline important
+        // declaration is the top of the cascade. Worth being honest that the
+        // page was blamed for this twice and was never the cause — it
+        // reproduces on a blank local page, which is what
+        // tools/picker-harness.html exists to show.
         forceStyle(media, {
           position: 'relative',
           display: 'block',
-          'box-sizing': 'content-box',
+          'box-sizing': 'border-box',
           width: '100%',
-          height: '0',
-          'padding-top': '100%',
+          height: 'auto',
+          'aspect-ratio': '1 / 1',
           overflow: 'hidden'
         });
 

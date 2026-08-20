@@ -24,7 +24,7 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
 # A release is the worst time to find out the ZIP writer is broken, and these
 # take a couple of seconds.
 Write-Host 'Running tests...'
-foreach ($test in @('test-zip.js', 'test-csv.js', 'test-naming.js', 'test-api.js', 'test-no-filename-listener.js', 'test-db-version.js')) {
+foreach ($test in @('test-zip.js', 'test-csv.js', 'test-naming.js', 'test-api.js', 'test-no-filename-listener.js', 'test-db-version.js', 'test-picker-layout.js')) {
     $testPath = Join-Path $PSScriptRoot $test
     & node $testPath | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "$test failed - fix it before releasing." }

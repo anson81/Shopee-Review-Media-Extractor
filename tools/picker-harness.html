@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Picker harness</title>
+<!--
+  Opens the real picker with fake items, outside Shopee.
+
+  The thumbnail layout has now been "fixed" twice from reading the stylesheet
+  and got worse both times, on a page that cannot be inspected from here. This
+  reproduces the picker on its own so its geometry can be MEASURED instead of
+  reasoned about. If the bug shows up here, it is the picker's own layout and
+  has nothing to do with Shopee's CSS.
+
+  Thumbnails are inline SVG data URLs, so nothing is fetched.
+
+    node tools/picker-measure.js
+-->
+<link rel="stylesheet" href="../content/picker.css" />
+<style>
+  /* Stand in for a host page, so the picker is not the only thing on screen. */
+  body { margin: 0; font-family: system-ui, sans-serif; background: #fafafa; }
+  #host { padding: 24px; }
+</style>
+
+<div id="host"><h1>Host page</h1><p>The picker opens over this.</p></div>
+
+<script src="../content/picker.js"></script>
+<script>
+  function swatch(hue) {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400">' +
+      '<rect width="300" height="400" fill="hsl(' + hue + ',70%,60%)"/></svg>';
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+  }
+
+  const COUNT = Number(new URLSearchParams(location.search).get('n') || 139);
+  const items = Array.from({ length: COUNT }, (_, i) => {
+    const url = swatch((i * 37) % 360);
+    return {
+      url,
+      thumb: url,
+      kind: i % 3 === 0 ? 'video' : 'image',
+      source: 'review',
+      page: Math.floor(i / 50) + 1,
+      reviewIndex: (i % 50) + 1,
+      mediaIndex: 1,
+      ctime: 1780794209,
+      buyer: 'buyer' + i
+    };
+  });
+
+  window.__pickerResult = 'pending';
+  window.SRME_Picker.open(items, { style: 'page-review-type' })
+    .then((r) => { window.__pickerResult = r ? 'exported' : 'cancelled'; });
+</script>
