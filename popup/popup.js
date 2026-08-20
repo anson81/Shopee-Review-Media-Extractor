@@ -16,6 +16,45 @@ const PRODUCT_HOSTS = /(^|\.)shopee\.(com\.my|sg|ph|co\.th|co\.id)$/i;
  */
 let folderName = null;
 
+/* ------------------------------------------------------------------ *
+ * The update bar
+ *
+ * Same shape as both sibling extensions. Installing an update needs a
+ * directory handle the user granted through a picker, and only a real page
+ * can show one — so the popup reports, and Options installs.
+ * ------------------------------------------------------------------ */
+let updateAction = 'check';
+
+function showUpdate(text, kind, actionLabel, action) {
+  const bar = $('update-bar');
+  const button = $('update-action');
+  bar.hidden = false;
+  bar.className = 'update-bar' + (kind ? ' ' + kind : '');
+  $('update-text').textContent = text;
+  button.hidden = !actionLabel;
+  if (actionLabel) button.textContent = actionLabel;
+  if (action) updateAction = action;
+}
+
+function renderUpdate(info) {
+  if (!info) {
+    showUpdate('Updates not checked yet.', null, 'Check', 'check');
+    return;
+  }
+  if (info.error) {
+    // Worth showing rather than hiding: a self-updating extension that has
+    // quietly stopped being able to check is exactly what leaves someone on
+    // an old version wondering why a fix never arrived.
+    showUpdate('Could not check for updates.', 'warn', 'Check', 'check');
+    return;
+  }
+  if (info.available) {
+    showUpdate('Version ' + info.latest + ' is available.', 'new', 'Update', 'options');
+    return;
+  }
+  showUpdate('Up to date (v' + info.current + ').', 'ok', 'Check', 'check');
+}
+
 const WANT_IDS = {
   reviewImages: 'review-images',
   reviewVideos: 'review-videos',
@@ -161,6 +200,12 @@ function render(state) {
       where.hidden = true;
     }
 
+    // Only offered for a file that went through downloads, because
+    // chrome.downloads.show() is the only thing that opens a folder and it
+    // needs a download to point at. A file written into the chosen folder
+    // cannot be revealed by any extension API — see revealFolder().
+    $('open-folder').hidden = result.viaFolder || !result.path;
+
     // Everything below is something the user would otherwise never learn.
     const notes = [];
     const folder = describeFolderIssue(result.folderIssue);
@@ -207,6 +252,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const stored = await chrome.storage.local.get('outputFolderName');
   folderName = stored.outputFolderName || null;
+
+  $('version').textContent = 'v' + chrome.runtime.getManifest().version;
+
+  $('open-folder').addEventListener('click', async () => {
+    const res = await chrome.runtime.sendMessage({ type: 'openFolder' });
+    // Nothing was opened: say where it is instead of leaving a dead button.
+    if (res && res.ok && !res.opened && res.path) {
+      setStatus('Saved at ' + res.path);
+    }
+  });
+
+  $('update-action').addEventListener('click', async () => {
+    if (updateAction === 'options') {
+      chrome.runtime.openOptionsPage();
+      return;
+    }
+    showUpdate('Checking…');
+    renderUpdate(await chrome.runtime.sendMessage({ type: 'checkUpdate' }));
+  });
+
+  // Whatever the last check found, shown at once, then refreshed in the
+  // background. Waiting on the network before saying anything makes the popup
+  // look broken on a slow connection.
+  const { updateInfo } = await chrome.storage.local.get('updateInfo');
+  renderUpdate(updateInfo);
+  chrome.runtime.sendMessage({ type: 'checkUpdate' }).then(renderUpdate).catch(() => {});
 
   $('settings').addEventListener('click', (e) => {
     e.preventDefault();

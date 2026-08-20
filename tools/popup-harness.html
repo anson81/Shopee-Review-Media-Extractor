@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Popup harness</title>
+<!--
+  Renders the real popup with a stubbed chrome API, so its layout can be seen
+  and measured without installing anything.
+
+  The markup is FETCHED from popup.html rather than copied, so this cannot
+  drift out of step with the thing it is supposed to be testing.
+
+  ?state=done|running|idle|update  picks what to render.
+-->
+<style>
+  body { margin: 0; background: #9ca3af; font-family: system-ui, sans-serif; }
+  #frame { width: 360px; background: #fff; margin: 20px; box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+</style>
+
+<div id="frame">loading…</div>
+
+<script>
+  const WHICH = new URLSearchParams(location.search).get('state') || 'done';
+
+  const STATES = {
+    idle: { phase: 'idle', running: false, lastResult: null },
+    running: {
+      phase: 'finding', running: true, page: 3, found: 128, totalPages: 5,
+      message: 'Page 3 of 5…', lastResult: null
+    },
+    done: {
+      phase: 'done', running: false,
+      lastResult: {
+        files: 139, failed: 2, viaFolder: false,
+        path: 'Shopee Review Media/2026-08-20/QFM_Melody-Batwing.zip',
+        folderIssue: null, usedFallback: false, misnamed: null, downloadFailed: false
+      }
+    },
+    update: { phase: 'idle', running: false, lastResult: null }
+  };
+
+  const state = STATES[WHICH] || STATES.done;
+
+  // Enough of the API surface for the popup to render.
+  window.chrome = {
+    runtime: {
+      getManifest: () => ({ version: '1.2.4' }),
+      openOptionsPage: () => console.log('[harness] options'),
+      sendMessage: async (msg) => {
+        if (msg.type === 'getSettings') return { filenameStyle: 'page-review-type', pageDelayMs: 300 };
+        if (msg.type === 'getState') return state;
+        if (msg.type === 'checkUpdate') {
+          return WHICH === 'update'
+            ? { available: true, latest: '1.3.0', current: '1.2.4' }
+            : { available: false, current: '1.2.4' };
+        }
+        if (msg.type === 'openFolder') return { ok: true, opened: true };
+        return { ok: true };
+      }
+    },
+    storage: {
+      local: {
+        get: async (k) => (k === 'outputFolderName'
+          ? { outputFolderName: 'Shopee Review' }
+          : { updateInfo: null })
+      }
+    },
+    tabs: {
+      query: async () => ([{ id: 1, url: 'https://shopee.com.my/product/50237726/27392256425/' }]),
+      sendMessage: async () => ({ ok: true })
+    },
+    scripting: { executeScript: async () => [{ result: true }], insertCSS: async () => {} }
+  };
+
+  (async () => {
+    const html = await (await fetch('../popup/popup.html')).text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = '../popup/popup.css';
+    document.head.appendChild(css);
+
+    document.getElementById('frame').innerHTML = doc.body.innerHTML;
+
+    // innerHTML does not run scripts, so they are loaded deliberately, in the
+    // order popup.html declares them.
+    for (const src of ['../content/api.js', '../popup/popup.js']) {
+      await new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = resolve;
+        document.body.appendChild(s);
+      });
+    }
+
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+  })();
+</script>

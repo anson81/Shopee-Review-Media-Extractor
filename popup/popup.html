@@ -8,8 +8,20 @@
   <body>
     <header>
       <h1>Review Media Extractor</h1>
+      <span id="version" class="version">v…</span>
       <a id="settings" href="#" title="Settings">Settings</a>
     </header>
+
+    <!--
+      Both sibling extensions carry this bar, for a reason learned the hard
+      way: an extension that updates itself from GitHub is invisible about it
+      unless the popup says so, and an unnoticed old version is indistinguishable
+      from a broken one.
+    -->
+    <div id="update-bar" class="update-bar" hidden>
+      <span id="update-text"></span>
+      <button id="update-action" type="button" hidden>Check</button>
+    </div>
 
     <main>
       <p id="not-product" class="warn" hidden>
@@ -55,6 +67,8 @@
 
       <p id="status" class="status"></p>
       <p id="where" class="where" hidden></p>
+      <button id="open-folder" type="button" hidden
+              title="Open the folder this export was saved in">Open folder</button>
       <p id="folder-note" class="note" hidden></p>
     </main>
 

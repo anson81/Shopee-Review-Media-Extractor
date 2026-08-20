@@ -508,6 +508,11 @@ async function runExport({
       runFolderName()
     );
 
+    // Kept for revealFolder(), which needs the download id to open Chrome's
+    // own file-in-folder view.
+    state.lastDownloadId = saved.downloadId ?? null;
+    state.lastOutputPath = saved.path;
+
     state.lastResult = {
       path: saved.path,
       viaFolder: saved.viaFolder,
@@ -579,6 +584,34 @@ async function checkUpdate() {
   }
 }
 
+/**
+ * Show the seller where the last export went.
+ *
+ * chrome.downloads.show() opens the containing folder with the file already
+ * selected, which is exactly right — but only for a file that went through
+ * downloads. There is no extension API that opens an arbitrary directory, so
+ * a file written into the seller's own chosen folder cannot be revealed at
+ * all; the honest answer there is to hand back the path and let the popup
+ * show it. Opening the Downloads folder instead would be actively unhelpful,
+ * because that is the one place the file is NOT.
+ */
+async function revealFolder() {
+  if (state.lastDownloadId != null) {
+    try {
+      await chrome.downloads.show(state.lastDownloadId);
+      return { ok: true, opened: true };
+    } catch (_) {
+      /* fall through to reporting the path */
+    }
+  }
+
+  if (state.lastOutputPath) {
+    return { ok: true, opened: false, path: state.lastOutputPath };
+  }
+
+  return { ok: false, opened: false };
+}
+
 /* ------------------------------------------------------------------ *
  * Messages
  * ------------------------------------------------------------------ */
@@ -621,6 +654,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         } catch (err) {
           return sendResponse({ ok: false, error: err?.message || String(err) });
         }
+
+      case 'openFolder':
+        return sendResponse(await revealFolder());
 
       case 'runFinished':
         state.running = false;

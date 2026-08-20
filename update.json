@@ -1,7 +1,9 @@
 {
-    "version":  "1.2.3",
+    "version":  "1.2.4",
     "notes":  [
-                  "The thumbnail grid no longer collapses. Pictures are now large squares in a properly scrolling list, instead of being squeezed into thin coloured lines."
+                  "Settings now shows the chosen folder clearly, and the button says Change folder instead of looking like you never picked one.",
+                  "The popup shows the version, checks for updates, and offers an Open folder button after a download.",
+                  "Added a way to preview the popup and the picker without installing, so layout problems are measured instead of guessed at."
               ],
     "files":  [
                   "background/background.js",

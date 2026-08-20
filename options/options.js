@@ -163,14 +163,24 @@ async function ensureWritable(handle, mayPrompt) {
 async function refreshOutputFolder() {
   const status = $('output-status');
   const forget = $('forget-output');
+  const pick = $('pick-output');
   const handle = await idbGet(OUTPUT_KEY);
 
   if (!handle) {
     status.textContent =
       'No folder chosen — exports are saved through Chrome, where another extension can rename them.';
+    status.className = 'status';
+    // The label is part of the answer to "have I set this up yet?"
+    pick.textContent = 'Choose the exports folder…';
     forget.hidden = true;
     return;
   }
+
+  // A button still reading "Choose the exports folder…" next to a paragraph
+  // of explanation reads as "you have not done this yet" — which is how a
+  // folder that WAS set still looked unset. The name goes first, on its own,
+  // and the button admits the choice already exists.
+  pick.textContent = 'Change folder…';
 
   // Backfilled here, not only when the folder is picked, so a folder chosen
   // before the popup learned to report locations does not have to be chosen
@@ -181,8 +191,9 @@ async function refreshOutputFolder() {
   // permission dialog at someone who came here to change something else.
   const writable = await ensureWritable(handle, false);
   status.textContent = writable
-    ? `Writing exports into "${handle.name}". No other extension can rename them.`
-    : `"${handle.name}" needs permission again — choose it once more.`;
+    ? `✓ Saving into "${handle.name}" — no other extension can rename these files.`
+    : `⚠ "${handle.name}" needs permission again — choose it once more.`;
+  status.className = 'status ' + (writable ? 'good' : 'warn');
   forget.hidden = false;
 }
 

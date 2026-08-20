@@ -210,3 +210,15 @@ textarea#probe-out {
   overflow-wrap: normal;
   overflow-x: auto;
 }
+
+/* The chosen-folder line. It answers "is this set up?" at a glance, which a
+   paragraph of grey explanation was not doing. */
+.status.good {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.status.warn {
+  color: #b45309;
+  font-weight: 600;
+}

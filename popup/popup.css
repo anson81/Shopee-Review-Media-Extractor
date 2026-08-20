@@ -171,3 +171,52 @@ button:disabled {
   word-break: break-all;
   user-select: text;
 }
+
+/* Version and update bar. Mirrors both sibling extensions, so the three feel
+   like one set of tools rather than three strangers. */
+.version {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #9ca3af;
+}
+
+.update-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 11.5px;
+  color: #4b5563;
+  background: #f9fafb;
+  border-bottom: 1px solid var(--line, #e5e7eb);
+}
+
+.update-bar.ok { color: #15803d; }
+.update-bar.warn { color: #b45309; }
+.update-bar.new {
+  color: #9a3412;
+  background: #fff7ed;
+  font-weight: 600;
+}
+
+.update-bar button {
+  /* The popup's buttons are full-width by default, which stretched this one
+     across the bar and wrapped the message onto two lines. */
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 3px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.update-bar span {
+  flex: 1 1 auto;
+}
+
+#open-folder {
+  margin-top: 8px;
+  width: 100%;
+}
