@@ -6,11 +6,12 @@
  * listener, and must never gain one — see tools/test-no-filename-listener.js
  * for what happens to the sibling extensions if it does.
  */
-importScripts('../lib/zip.js', '../lib/csv.js', '../lib/naming.js');
+importScripts('../lib/zip.js', '../lib/csv.js', '../lib/naming.js', '../lib/diagnostics.js');
 
 const Zip = self.SRME_Zip;
 const Csv = self.SRME_Csv;
 const Naming = self.SRME_Naming;
+const Diagnostics = self.SRME_Diagnostics;
 
 const DEFAULTS = {
   filenameStyle: Naming.STYLES.PAGE_REVIEW_TYPE,
@@ -663,6 +664,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       case 'openFolder':
         return sendResponse(await revealFolder());
+
+      // Everything the Options page needs for "Copy diagnostics". The
+      // formatting lives in lib/diagnostics.js so a node test can read it
+      // without a browser.
+      //
+      // otherExtensions and history are passed as an explicit null, and that is
+      // not laziness. This extension registers no filename listener - see
+      // tools/test-no-filename-listener.js for why that rule exists - so it
+      // genuinely cannot see what else is handling downloads, and it keeps no
+      // run history. Reporting either as "none" would read as evidence, and
+      // send whoever is diagnosing this looking in the wrong place.
+      case 'getDiagnostics': {
+        const settings = await getSettings();
+        const { updateInfo } = await chrome.storage.local.get('updateInfo');
+        return sendResponse({
+          ok: true,
+          report: Diagnostics.buildReport({
+            now: Date.now(),
+            extension: {
+              name: chrome.runtime.getManifest().name,
+              version: chrome.runtime.getManifest().version,
+              id: chrome.runtime.id
+            },
+            browser: navigator.userAgent,
+            platform: (navigator.userAgentData && navigator.userAgentData.platform) || '',
+            folder: {
+              chosen: msg.outputFolder === true,
+              name: msg.outputFolderName || '',
+              extensionFolderGranted: msg.extensionFolderGranted === true
+            },
+            updateSource: settings.updateSource || null,
+            updateInfo: updateInfo || null,
+            otherExtensions: null,
+            history: null,
+            notes: [
+              'Current phase: ' + (state.phase || 'idle') +
+                (state.running ? ' (running)' : ''),
+              'Last progress: page ' + (state.page || 0) +
+                (state.totalPages ? ' of ' + state.totalPages : '') +
+                ', ' + (state.found || 0) + ' found',
+              'Last message: ' + (state.message || '(none)'),
+              'Last folder issue: ' + (lastFolderIssue || '(none)')
+            ]
+          })
+        });
+      }
 
       case 'runFinished':
         state.running = false;

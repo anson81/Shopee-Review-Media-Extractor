@@ -155,6 +155,20 @@
         <textarea id="probe-out" rows="14" spellcheck="false" hidden readonly></textarea>
       </section>
 
+      <section>
+        <h2>Something went wrong?</h2>
+        <p class="note">
+          Copy the details and paste them to whoever is fixing it. Nothing is sent anywhere
+          by this button &mdash; it only puts text on your clipboard, and you can read every
+          word of it below before you send it.
+        </p>
+        <div class="row">
+          <button id="copy-diagnostics" type="button">Copy diagnostics</button>
+          <span id="diagnostics-copied" class="status" hidden></span>
+        </div>
+        <pre id="diagnostics" class="diagnostics" hidden></pre>
+      </section>
+
       <div id="saved" class="saved" hidden>Saved</div>
     </main>
 

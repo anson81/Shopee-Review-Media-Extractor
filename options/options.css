@@ -271,3 +271,20 @@ textarea#probe-out {
   font-size: 13px;
   color: var(--ink, #1f2937);
 }
+
+/* The diagnostics text, shown so nobody has to send something they cannot read.
+   Scrolls rather than stretching the page, and stays selectable so a refused
+   clipboard write still leaves a way to copy it by hand. */
+.diagnostics {
+  margin: 12px 0 0;
+  padding: 12px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid #d7dce3;
+  border-radius: 6px;
+  background: #f7f9fb;
+  color: #24292f;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  white-space: pre;
+  user-select: text;
+}

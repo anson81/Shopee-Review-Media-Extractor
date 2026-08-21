@@ -24,11 +24,16 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
 # A release is the worst time to find out the ZIP writer is broken, and these
 # take a couple of seconds.
 Write-Host 'Running tests...'
-foreach ($test in @('test-zip.js', 'test-csv.js', 'test-naming.js', 'test-api.js', 'test-no-filename-listener.js', 'test-db-version.js', 'test-picker-layout.js')) {
-    $testPath = Join-Path $PSScriptRoot $test
-    & node $testPath | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "$test failed - fix it before releasing." }
-    Write-Host "  ok  $test"
+# Discovered, not listed. A hardcoded list silently stops covering the newest
+# test - which is always the one guarding the newest mistake. This matches
+# what .github/workflows/tests.yml runs, so a release cannot pass here and
+# fail there.
+$tests = Get-ChildItem -Path $PSScriptRoot -Filter 'test-*.js' -File | Sort-Object Name
+if (-not $tests) { throw 'No tests found in tools/ - releasing blind is not a release.' }
+foreach ($test in $tests) {
+    & node $test.FullName | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "$($test.Name) failed - fix it before releasing." }
+    Write-Host "  ok  $($test.Name)"
 }
 
 # --- update manifest.json ---------------------------------------------------
@@ -65,11 +70,17 @@ Write-Host "manifest.json: $old -> $Version"
 # extension, and listing them would have the updater download files that do
 # nothing - or 404 for anyone who cloned without them.
 $skip = @('tools', 'docs', '.git', '.github', 'node_modules')
+$skipFiles = @('CLAUDE.md')
 $files = Get-ChildItem -Path $root -Recurse -File |
     Where-Object {
         $rel = $_.FullName.Substring($root.Length + 1).Replace('\', '/')
         $top = $rel.Split('/')[0]
-        ($skip -notcontains $top) -and -not $rel.Split('/')[-1].StartsWith('.')
+        # CLAUDE.md is developer notes, not runtime code. Shipping it would
+        # write it onto every machine on every update, for nothing. Kept in
+        # step with SKIP_FILES in tools/test-release-consistency.js and the
+        # exclude list in .github/workflows/tests.yml - those three
+        # disagreeing is how a shipped file ends up exempt from every check.
+        ($skip -notcontains $top) -and ($skipFiles -notcontains $rel) -and -not $rel.Split('/')[-1].StartsWith('.')
     } |
     ForEach-Object { $_.FullName.Substring($root.Length + 1).Replace('\', '/') } |
     Sort-Object
