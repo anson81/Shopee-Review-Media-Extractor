@@ -19,8 +19,11 @@
 # is a red X on the commit rather than a report that lands in the wrong folder
 # three days later.
 #
-# Windows, because that is what these extensions run on, and what the tests
-# were verified against.
+# Every OS Anson runs, because "it works on my machine" is exactly the failure
+# this repo keeps having. The download-naming race passed on the Windows PC and
+# failed on the slower Linux one; the Mac is the production machine. A test that
+# only ever runs on one of the three cannot tell you the code is portable, and
+# these extensions are meant to behave the same everywhere.
 name: tests
 
 on:
@@ -30,7 +33,14 @@ on:
 
 jobs:
   tests:
-    runs-on: windows-latest
+    strategy:
+      # Do not stop the other two the moment one fails — an OS-specific failure
+      # is only diagnosable next to the OSes that passed.
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -90,8 +100,10 @@ jobs:
       # This list is kept in step with SKIP_DIRS/SKIP_FILES in
       # tools/test-release-consistency.js — the two disagreeing is how a shipped
       # file ends up exempt from both.
+      # Repo history is the same on every runner, so this is checked once rather
+      # than three times saying the same thing.
       - name: Shipped code must come with a version bump
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           if ! git rev-parse HEAD~1 >/dev/null 2>&1; then
