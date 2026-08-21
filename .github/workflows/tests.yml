@@ -1,0 +1,124 @@
+# Runs every test in tools/ on every push.
+#
+# WHY THIS EXISTS.
+#
+# These extensions are installed by hand from this branch and update themselves
+# from it. There is no Chrome Web Store review, no staging install, and no
+# second pair of eyes — whatever is on the branch is what every machine runs,
+# usually within a day.
+#
+# The tests in tools/ were each written after a bug that shipped: the
+# browser-wide filename listener that two of these extensions used to silence
+# each other, the IndexedDB version that three files disagreed about, an
+# update.json that quietly stopped matching the manifest. Every one of those
+# failed silently on someone's PC while looking healthy on the machine it was
+# written on.
+#
+# Tests that only run when somebody remembers to run them are how those bugs
+# reached a second machine. This runs them all, on every push, so a regression
+# is a red X on the commit rather than a report that lands in the wrong folder
+# three days later.
+#
+# Windows, because that is what these extensions run on, and what the tests
+# were verified against.
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The version check below compares this commit against the one before
+          # it, so one commit of history is not enough.
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No package.json and no dependencies anywhere in these repos, so there
+      # is nothing to install — every test is plain node against the source.
+      - name: Run every test in tools/
+        shell: bash
+        run: |
+          shopt -s nullglob
+          tests=(tools/test-*.js)
+          if [ ${#tests[@]} -eq 0 ]; then
+            echo "::error::no tests found in tools/ — this workflow would pass vacuously"
+            exit 1
+          fi
+
+          failed=0
+          for t in "${tests[@]}"; do
+            echo "::group::$t"
+            if node "$t"; then
+              echo "PASS  $t"
+            else
+              echo "::error file=$t::$t failed"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
+
+      # THE SILENT ONE.
+      #
+      # checkUpdate() only ever compares version numbers. Shipping a fix
+      # without raising the version means no installed copy is ever offered it:
+      # nothing errors, nothing is logged, the fix simply never arrives. The
+      # August 2026 filename bug was fixed twice while machines still ran the
+      # broken build, and the fix for it sat finished-but-unpushed for three
+      # days after that.
+      #
+      # tools/test-release-consistency.js already checks that manifest.json and
+      # update.json agree with each other. What it cannot see is history — that
+      # this push changed shipped code and left the version where it was.
+      #
+      # README.md and CLAUDE.md are excluded: README ships but cannot change how
+      # the extension behaves, and CLAUDE.md is not shipped at all. Neither
+      # should force a version.
+      - name: Shipped code must come with a version bump
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          if ! git rev-parse HEAD~1 >/dev/null 2>&1; then
+            echo "No previous commit to compare against — nothing to check."
+            exit 0
+          fi
+
+          changed=$(git diff --name-only HEAD~1 HEAD -- . \
+            ':(exclude)tools/**' \
+            ':(exclude)docs/**' \
+            ':(exclude).github/**' \
+            ':(exclude)README.md'             ':(exclude)CLAUDE.md')
+
+          if [ -z "$changed" ]; then
+            echo "No shipped file changed. No version bump needed."
+            exit 0
+          fi
+
+          echo "Shipped files changed:"
+          echo "$changed" | sed 's/^/  /'
+
+          read_version() {
+            node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).version)}catch(e){console.log('')}})"
+          }
+
+          now=$(node -e "console.log(require('./manifest.json').version)")
+          before=$(git show HEAD~1:manifest.json | read_version)
+
+          echo "manifest.json: $before -> $now"
+
+          if [ "$before" = "$now" ]; then
+            echo "::error::Shipped code changed but manifest.json is still $now. No installed copy will ever be offered this — checkUpdate() compares version numbers and nothing else. Raise the version in manifest.json AND update.json, and add a line to update.json notes."
+            exit 1
+          fi
+
+          echo "Version was raised. Installed copies will be offered this."
