@@ -1,8 +1,8 @@
 {
-    "version":  "1.4.0",
+    "version":  "1.4.1",
     "notes":  [
-                  "A Copy diagnostics button, on the Options page. When something goes wrong on a computer nobody can look at, one click puts the details on the clipboard - version, browser, where it got to, and the last folder problem. Paste it to whoever is fixing it. Nothing is sent anywhere by itself, and the page shows you every word before you copy it.",
-                  "Your Windows or Mac username is removed from any folder name, so the report can be forwarded without a second thought."
+                  "Three things the report was getting wrong, found the first time it was used for real. It said the update check had never run, when it had - the time was stored under a name it was not reading. It said no reports folder was chosen, when this extension has never had that option at all. And where a report already described itself, the numbers were printed twice.",
+                  "None of these were guesses. A report that is confidently wrong is worse than no report, because it sends whoever is reading it somewhere else."
               ],
     "files":  [
                   "background/background.js",

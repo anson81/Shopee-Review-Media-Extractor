@@ -142,8 +142,57 @@ check('reads the label/message shape too',
   twinShaped.indexOf('Orders with products') !== -1 &&
   twinShaped.indexOf('SiteGiant never produced the export') !== -1,
   twinShaped);
-check('reports the import counts when there are any',
-  twinShaped.indexOf('3 new, 4 updated, 5 unchanged') !== -1);
+// The message already carries the counts in SiteGiant's records, so printing
+// both put the same three numbers on two consecutive lines.
+check('does not print the counts twice when the message already says them',
+  twinShaped.split('3 new').length - 1 <= 1,
+  twinShaped);
+
+const countsOnly = D.buildReport({
+  now: NOW,
+  extension: { name: 'Twin', version: '1.0.0' },
+  history: [{
+    at: NOW - 60000,
+    reports: [{ id: 'x', label: 'Orders', status: 'done',
+      counts: { created: 3, updated: 4, unchanged: 5 } }]
+  }]
+});
+check('still reports the counts when nothing else says them',
+  countsOnly.indexOf('3 new, 4 updated, 5 unchanged') !== -1,
+  countsOnly);
+
+// A missing timestamp is not evidence that nothing ever happened. The first
+// live report said "(never)" about a check that had plainly just run, because
+// this extension stamps it `at` rather than `checkedAt`.
+const stamped = D.buildReport({
+  now: NOW,
+  extension: { name: 'X', version: '1.0.0' },
+  updateInfo: { latest: '1.0.0', at: NOW - 3600000 }
+});
+check('reads the other spelling of the update timestamp',
+  stamped.indexOf('1 h ago') !== -1 && stamped.indexOf('(never)') === -1,
+  stamped);
+
+const unstamped = D.buildReport({
+  now: NOW,
+  extension: { name: 'X', version: '1.0.0' },
+  updateInfo: { latest: '1.0.0' }
+});
+check('an unstamped check says not recorded, never "never"',
+  unstamped.indexOf('not recorded by this extension') !== -1 &&
+  unstamped.indexOf('(never)') === -1,
+  unstamped);
+
+// Two of the three extensions have no reports-folder feature at all. Saying
+// "no" sends someone looking for a setting that does not exist.
+const noFolderFeature = D.buildReport({
+  now: NOW,
+  extension: { name: 'X', version: '1.0.0' },
+  folder: { chosen: null }
+});
+check('a missing folder FEATURE is not reported as an unset folder',
+  noFolderFeature.indexOf('not offered by this extension') !== -1,
+  noFolderFeature);
 check('masks the home directory in that shape as well',
   twinShaped.indexOf('/home/<you>/SiteGiant') !== -1 &&
   twinShaped.indexOf('/home/anson') === -1);
