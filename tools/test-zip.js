@@ -62,35 +62,92 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'srme-zip-'));
 const zipPath = path.join(tmp, 'test.zip');
 fs.writeFileSync(zipPath, Buffer.from(bytes));
 
-function tryExtract() {
-  // PowerShell's Expand-Archive is always present on Windows 10.
-  try {
-    execFileSync('powershell', [
-      '-NoProfile', '-NonInteractive', '-Command',
-      'Expand-Archive -LiteralPath "' + zipPath + '" -DestinationPath "' +
-      path.join(tmp, 'out') + '" -Force'
-    ], { stdio: 'pipe' });
-    return 'Expand-Archive';
-  } catch (e) {
-    return null;
-  }
-}
+/**
+ * Whatever unzip utility this machine happens to have.
+ *
+ * This used to try PowerShell's Expand-Archive and nothing else, on the
+ * reasoning that it is always present on Windows 10 — which was true, and
+ * quietly made a portability test into a Windows test. It failed the moment CI
+ * ran on Linux, where `powershell` does not exist, and reported it as a
+ * malformed archive rather than a missing tool. That is the wrong failure to
+ * show someone: the zip was fine.
+ *
+ * The point of shelling out at all is that an extractor NOT written here agreed
+ * the archive is valid. Any of these serves that purpose, so the first one that
+ * runs wins, and the name is printed so a passing run says which one judged it.
+ */
+const EXTRACTORS = [
+  ['unzip', (zip, out) => ['-o', zip, '-d', out]],
+  // bsdtar reads zip, and ships with macOS and Windows 10+.
+  ['tar', (zip, out) => ['-x', '-f', zip, '-C', out]],
+  // PowerShell Core, named pwsh, is the cross-platform one.
+  ['pwsh', (zip, out) => ['-NoProfile', '-NonInteractive', '-Command',
+    'Expand-Archive -LiteralPath "' + zip + '" -DestinationPath "' + out + '" -Force']],
+  ['powershell', (zip, out) => ['-NoProfile', '-NonInteractive', '-Command',
+    'Expand-Archive -LiteralPath "' + zip + '" -DestinationPath "' + out + '" -Force']]
+];
 
-const extractor = tryExtract();
-if (!extractor) {
-  failures += 1;
-  console.log('  FAIL no extractor accepted the archive');
-} else {
-  console.log('  ok   ' + extractor + ' accepted the archive');
-  const outRoot = path.join(tmp, 'out');
-  for (const entry of entries) {
-    const target = path.join(outRoot, entry.path.split('/').join(path.sep));
-    if (!fs.existsSync(target)) {
-      failures += 1;
-      console.log('  FAIL missing after extraction: ' + entry.path);
+/**
+ * Extract, and require every file back byte for byte — including the one whose
+ * name is Chinese and Thai.
+ *
+ * An extractor that runs without error has not necessarily done the job.
+ * Info-ZIP's `unzip` on Windows exits 0 and writes the non-ASCII entry under a
+ * mangled name, so the archive looks accepted while a file is missing. That is
+ * a limitation of that build, not of the zip — the UTF-8 flag assertions below
+ * prove the archive is right — so a tool that cannot represent the name is
+ * passed over rather than failed on.
+ *
+ * Any machine with at least one UTF-8-capable extractor passes. If none has
+ * one, the failure names every tool tried and what each did, because "no
+ * extractor accepted the archive" sent someone looking at the wrong thing once
+ * already.
+ */
+function extractAndVerify() {
+  const out = path.join(tmp, 'out');
+  const tried = [];
+
+  for (const [cmd, args] of EXTRACTORS) {
+    // Each attempt gets a clean destination, so files left by a previous
+    // extractor cannot be mistaken for this one's work.
+    fs.rmSync(out, { recursive: true, force: true });
+    fs.mkdirSync(out, { recursive: true });
+
+    try {
+      execFileSync(cmd, args(zipPath, out), { stdio: 'pipe' });
+    } catch (e) {
+      // ENOENT means the tool is not installed here — no verdict on the
+      // archive. Anything else means it ran and rejected it.
+      tried.push(cmd + (e.code === 'ENOENT' ? ' (not installed)' : ' (rejected it)'));
       continue;
     }
-    const got = fs.readFileSync(target);
+
+    const missing = entries
+      .map((e) => e.path)
+      .filter((rel) => !fs.existsSync(path.join(out, rel.split('/').join(path.sep))));
+
+    if (missing.length) {
+      tried.push(cmd + ' (mangled ' + missing.length + ' name' +
+        (missing.length > 1 ? 's' : '') + ')');
+      continue;
+    }
+
+    return { extractor: cmd, out, tried };
+  }
+
+  return { extractor: null, out, tried };
+}
+
+const { extractor, out: outRoot, tried } = extractAndVerify();
+if (!extractor) {
+  failures += 1;
+  console.log('  FAIL no extractor produced every file: ' +
+    (tried.length ? tried.join(', ') : 'none were tried'));
+} else {
+  if (tried.length) console.log('  ..   passed over: ' + tried.join(', '));
+  console.log('  ok   ' + extractor + ' extracted every entry, names intact');
+  for (const entry of entries) {
+    const got = fs.readFileSync(path.join(outRoot, entry.path.split('/').join(path.sep)));
     const same = Buffer.compare(got, Buffer.from(entry.data)) === 0;
     check('round-trips ' + entry.path, same,
       same ? '' : got.length + ' bytes vs ' + entry.data.length);
