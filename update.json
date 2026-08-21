@@ -1,8 +1,7 @@
 {
-    "version":  "1.4.1",
+    "version":  "1.4.2",
     "notes":  [
-                  "Three things the report was getting wrong, found the first time it was used for real. It said the update check had never run, when it had - the time was stored under a name it was not reading. It said no reports folder was chosen, when this extension has never had that option at all. And where a report already described itself, the numbers were printed twice.",
-                  "None of these were guesses. A report that is confidently wrong is worse than no report, because it sends whoever is reading it somewhere else."
+                  "Internal only: carries the shared diagnostics builder up to date with the Shopee downloader, which now records why a file was or was not placed. Nothing changes in this extension\u0027s behaviour."
               ],
     "files":  [
                   "background/background.js",
