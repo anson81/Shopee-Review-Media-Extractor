@@ -193,6 +193,27 @@ const noFolderFeature = D.buildReport({
 check('a missing folder FEATURE is not reported as an unset folder',
   noFolderFeature.indexOf('not offered by this extension') !== -1,
   noFolderFeature);
+
+// The section that exists because the report guessed once and was wrong.
+const decided = D.buildReport({
+  now: NOW,
+  extension: { name: 'X', version: '1.0.0' },
+  decisions: [
+    { at: NOW - 1000, name: 'parentskudetail.xlsx',
+      reason: 'abstained: no shopee host in url/finalUrl/referrer' },
+    { at: NOW - 2000, name: 'download.csv', byExt: 'abc123',
+      reason: 'abstained: started by another extension' }
+  ]
+});
+check('the report says why the listener abstained',
+  decided.indexOf('no shopee host') !== -1 &&
+  decided.indexOf('what the filename listener decided') !== -1,
+  decided);
+check('and names the extension when one started the download',
+  decided.indexOf('started by extension abc123') !== -1);
+check('no decisions recorded means the section is left out entirely',
+  D.buildReport({ now: NOW, extension: { name: 'X', version: '1.0.0' } })
+    .indexOf('what the filename listener decided') === -1);
 check('masks the home directory in that shape as well',
   twinShaped.indexOf('/home/<you>/SiteGiant') !== -1 &&
   twinShaped.indexOf('/home/anson') === -1);
