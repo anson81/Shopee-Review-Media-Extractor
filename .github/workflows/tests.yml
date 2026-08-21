@@ -81,9 +81,15 @@ jobs:
       # update.json agree with each other. What it cannot see is history — that
       # this push changed shipped code and left the version where it was.
       #
-      # README.md and CLAUDE.md are excluded: README ships but cannot change how
-      # the extension behaves, and CLAUDE.md is not shipped at all. Neither
-      # should force a version.
+      # Excluded, because none of them can change how the extension behaves:
+      # README.md ships but is only read by people; CLAUDE.md is not shipped at
+      # all; and dotfiles are the repo's own scaffolding. .gitattributes tripped
+      # this on its first real push, which is the right kind of thing to find
+      # out from a red X.
+      #
+      # This list is kept in step with SKIP_DIRS/SKIP_FILES in
+      # tools/test-release-consistency.js — the two disagreeing is how a shipped
+      # file ends up exempt from both.
       - name: Shipped code must come with a version bump
         if: github.event_name == 'push'
         shell: bash
@@ -97,7 +103,7 @@ jobs:
             ':(exclude)tools/**' \
             ':(exclude)docs/**' \
             ':(exclude).github/**' \
-            ':(exclude)README.md'             ':(exclude)CLAUDE.md')
+            ':(exclude)README.md'             ':(exclude)CLAUDE.md'             ':(exclude).*')
 
           if [ -z "$changed" ]; then
             echo "No shipped file changed. No version bump needed."
