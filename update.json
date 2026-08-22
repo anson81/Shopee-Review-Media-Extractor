@@ -1,33 +1,34 @@
 {
-    "version":  "1.4.2",
-    "notes":  [
-                  "Internal only: carries the shared diagnostics builder up to date with the Shopee downloader, which now records why a file was or was not placed. Nothing changes in this extension\u0027s behaviour."
-              ],
-    "files":  [
-                  "background/background.js",
-                  "content/api.js",
-                  "content/content.js",
-                  "content/interceptor.js",
-                  "content/picker.css",
-                  "content/picker.js",
-                  "icons/icon128.png",
-                  "icons/icon16.png",
-                  "icons/icon48.png",
-                  "lib/csv.js",
-                  "lib/diagnostics.js",
-                  "lib/naming.js",
-                  "lib/probe.js",
-                  "lib/zip.js",
-                  "manifest.json",
-                  "offscreen/offscreen.html",
-                  "offscreen/offscreen.js",
-                  "options/options.css",
-                  "options/options.html",
-                  "options/options.js",
-                  "popup/popup.css",
-                  "popup/popup.html",
-                  "popup/popup.js",
-                  "README.md",
-                  "update.json"
-              ]
+  "version": "1.4.3",
+  "notes": [
+    "The export could fail to save at all on a machine whose chosen folder had lost its permission. When the folder cannot be written, the run falls back to a normal Chrome download - and that fallback called chrome.downloads from the offscreen writer, where the runtime API is the only extensions API Chrome provides. The call threw \"Cannot read properties of undefined (reading download)\" and the archive was lost. The download is started from the service worker again; the writer only prepares it.",
+    "If your exports have been landing through downloads instead of your chosen folder, open Settings and choose the folder once more - Chrome drops that permission on its own and the extension cannot ask for it mid-run."
+  ],
+  "files": [
+    "background/background.js",
+    "content/api.js",
+    "content/content.js",
+    "content/interceptor.js",
+    "content/picker.css",
+    "content/picker.js",
+    "icons/icon128.png",
+    "icons/icon16.png",
+    "icons/icon48.png",
+    "lib/csv.js",
+    "lib/diagnostics.js",
+    "lib/naming.js",
+    "lib/probe.js",
+    "lib/zip.js",
+    "manifest.json",
+    "offscreen/offscreen.html",
+    "offscreen/offscreen.js",
+    "options/options.css",
+    "options/options.html",
+    "options/options.js",
+    "popup/popup.css",
+    "popup/popup.html",
+    "popup/popup.js",
+    "README.md",
+    "update.json"
+  ]
 }

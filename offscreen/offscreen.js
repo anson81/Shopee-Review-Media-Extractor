@@ -89,8 +89,8 @@ async function folderFor(root, segments) {
  * Save one archive.
  *
  * Returns { ok: true, path } when it reached the chosen folder, or
- * { ok: false, reason, blobUrl } when it could not — with a blob URL the
- * worker can hand to chrome.downloads instead. The URL is made here because
+ * { ok: false, reason, blobUrl, path } when it could not — with a blob URL the
+ * worker hands to chrome.downloads instead. The URL is made here because
  * URL.createObjectURL does not exist in a service worker.
  *
  * 'no-folder' and 'permission' are worth telling apart, because both are
@@ -106,7 +106,7 @@ async function write({ key, segments, filename, preferDownload }) {
   // perfectly well and leave them without the Open folder button, which is
   // the whole reason they picked this.
   if (preferDownload) {
-    return downloadInstead(bytes, segments, filename, 'by-choice', null);
+    return handBack(bytes, segments, filename, 'by-choice', null);
   }
 
   try {
@@ -136,23 +136,37 @@ async function write({ key, segments, filename, preferDownload }) {
     }
   } catch (err) {
     reason = 'error';
-    return downloadInstead(bytes, segments, filename, reason, (err && err.message) || String(err));
+    return handBack(bytes, segments, filename, reason, (err && err.message) || String(err));
   }
 
-  return downloadInstead(bytes, segments, filename, reason, null);
+  return handBack(bytes, segments, filename, reason, null);
 }
 
 /**
- * The fallback, started FROM HERE rather than from the service worker.
+ * Prepare the fallback and hand it back to the worker to start.
  *
- * A blob URL belongs to the context that created it. The worker cannot call
- * URL.createObjectURL at all, so the URL had to be made here and was then
- * handed to the worker to download — which is exactly the arrangement Chrome
- * is least reliable about. Calling chrome.downloads from the document that
- * owns the URL keeps the two together. Offscreen documents are extension
- * contexts, so the downloads permission applies here just as it does there.
+ * WHY THE DOWNLOAD IS NOT STARTED HERE.
+ *
+ * It was, from v1.2.1 until 22 August 2026, on the reasoning that "offscreen
+ * documents are extension contexts, so the downloads permission applies here
+ * just as it does there". The permission does. The API does not:
+ *
+ *   "The runtime API is the only extensions API supported by offscreen
+ *    documents."  — developer.chrome.com, offscreen
+ *
+ * `chrome.downloads` is simply not defined in this document, so that call
+ * threw "Cannot read properties of undefined (reading 'download')" and the
+ * run lost its archive. It never showed up on the machine it was written on,
+ * because a working folder handle means this function is never reached.
+ * tools/test-offscreen-apis.js is why it cannot come back.
+ *
+ * So the split is: the URL is made here, because URL.createObjectURL does not
+ * exist in a service worker; the download is started there, because
+ * chrome.downloads does not exist here. The blob stays alive as long as this
+ * document does, and the worker never closes it — it revokes the URL by
+ * message once the download has actually finished.
  */
-async function downloadInstead(bytes, segments, filename, reason, error) {
+async function handBack(bytes, segments, filename, reason, error) {
   const path = segments.filter(Boolean).concat(filename).join('/');
 
   let url = null;
@@ -162,22 +176,7 @@ async function downloadInstead(bytes, segments, filename, reason, error) {
     return { ok: false, reason: 'blob-failed', error: (err && err.message) || String(err) };
   }
 
-  try {
-    const downloadId = await chrome.downloads.download({
-      url,
-      filename: path,
-      conflictAction: 'overwrite',
-      saveAs: false
-    });
-    return { ok: true, viaDownload: true, downloadId, path, reason, error, blobUrl: url };
-  } catch (err) {
-    URL.revokeObjectURL(url);
-    return {
-      ok: false,
-      reason: reason || 'download-failed',
-      error: (err && err.message) || String(err)
-    };
-  }
+  return { ok: false, reason, error, blobUrl: url, path };
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

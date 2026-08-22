@@ -323,6 +323,21 @@ function dropPayload(key) {
   })).catch(() => {});
 }
 
+/**
+ * Let go of the fallback's blob and the copy of the bytes behind it.
+ *
+ * The URL belongs to the offscreen document, so only the offscreen document
+ * can revoke it. If that document is gone the URL died with it and there is
+ * nothing to revoke — but the payload row is in IndexedDB and outlives
+ * everything, so it still has to be cleared here or a 50 MB export stays on
+ * disk for ever.
+ */
+function releaseBlob(url, key) {
+  chrome.runtime
+    .sendMessage({ target: 'offscreen-writer', action: 'revoke', url, key })
+    .catch(() => dropPayload(key));
+}
+
 /** Waits for a download to settle, so "saved" is a fact and not a hope. */
 function verifyDownload(downloadId) {
   return new Promise((resolve) => {
@@ -379,30 +394,47 @@ async function saveArchive(bytes, filename, runFolder, preferDownload) {
   }
 
   // The writer reached the chosen folder.
-  if (reply?.ok && !reply.viaDownload) {
+  if (reply?.ok) {
     lastFolderIssue = null;
     return { path: reply.path, viaFolder: true };
   }
 
-  // It could not, and started a download instead. Not an error worth stopping
-  // for: no folder chosen yet, or the permission lapsed. Both are settled in
-  // Options, and the file still arrives meanwhile.
+  // It could not, and handed back a blob URL to download instead. Not an error
+  // worth stopping for: no folder chosen yet, or the permission lapsed. Both
+  // are settled in Options, and the file still arrives meanwhile.
   if (reply?.reason) lastFolderIssue = reply.reason;
 
-  if (!reply?.ok) {
+  // Nothing to download — no payload, or the blob itself could not be made.
+  if (!reply?.blobUrl) {
     await dropPayload(key);
     throw new Error(
       'Could not save the archive: ' + (reply?.error || reply?.reason || 'no writer available')
     );
   }
 
-  const path = reply.path;
-  const item = await verifyDownload(reply.downloadId);
-  chrome.runtime.sendMessage({
-    target: 'offscreen-writer', action: 'revoke', url: reply.blobUrl, key
-  }).catch(() => {});
+  // STARTED HERE, NOT IN THE WRITER. chrome.downloads is undefined in an
+  // offscreen document — runtime is the only extensions API Chrome gives one —
+  // so the version that called it there threw a TypeError instead of saving,
+  // on every machine whose folder permission had lapsed. See the comment on
+  // handBack() in offscreen/offscreen.js.
+  let downloadId;
+  try {
+    downloadId = await chrome.downloads.download({
+      url: reply.blobUrl,
+      filename: reply.path,
+      conflictAction: 'overwrite',
+      saveAs: false
+    });
+  } catch (err) {
+    releaseBlob(reply.blobUrl, key);
+    throw new Error('Could not save the archive: ' + (err?.message || String(err)));
+  }
 
-  const downloadId = reply.downloadId;
+  const path = reply.path;
+  const item = await verifyDownload(downloadId);
+
+  // Only now. Revoking before the download has read the blob cancels it.
+  releaseBlob(reply.blobUrl, key);
 
   // A NAME IS NOT WORTH THE RUN. If Chrome saved it elsewhere or under
   // another name, say so rather than reporting a success that did not happen.
