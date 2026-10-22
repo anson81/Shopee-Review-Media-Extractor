@@ -324,6 +324,40 @@ function dropPayload(key) {
 }
 
 /**
+ * Can this run be saved where it is supposed to go?
+ *
+ * WHY A RUN NOW REFUSES TO START.
+ *
+ * Chrome's onDeterminingFilename is browser-wide: every extension holding the
+ * downloads permission is asked about every download, and the final word goes
+ * to the most recently installed one that answers. Calling suggest() with no
+ * arguments is an answer, not silence — it tells Chrome to use the tentative
+ * name it invented from the URL. Our archive goes out as a blob: URL, whose
+ * tentative name is the blob's own UUID, so a stranger's polite "no opinion"
+ * turns the export into cc18a2ea-6761-4a14-945b-be74e5b4c2eb.zip in plain
+ * Downloads — the folder lost along with the name. That is what the P50
+ * laptop got on 22 October 2026.
+ *
+ * That contest cannot be won. It was fought for three weeks across the two
+ * sibling extensions, and the winner changes whenever anything else on the
+ * machine updates itself, which is why the same code behaves differently on
+ * two PCs. The Shopee Report Downloader stopped entering it in v1.19.0 and
+ * writes its files itself. This extension already knows how to do that — the
+ * folder writer IS the primary path — so the only thing left to fix is the
+ * quiet fallback that walked back into the contest whenever no folder had
+ * been chosen.
+ *
+ * So: no folder, no run. Asked before a single file is fetched, because the
+ * alternative is finding out after four hundred requests. Someone who picks
+ * "Through Chrome downloads" in Options has read what that trades away and is
+ * not stopped.
+ */
+async function folderReady() {
+  await ensureOffscreen();
+  return chrome.runtime.sendMessage({ target: 'offscreen-writer', action: 'check' });
+}
+
+/**
  * Let go of the fallback's blob and the copy of the bytes behind it.
  *
  * The URL belongs to the offscreen document, so only the offscreen document
@@ -462,6 +496,23 @@ async function runExport({
 }) {
   const settings = await getSettings();
   const chosenStyle = style || settings.filenameStyle;
+
+  // BEFORE ANYTHING IS FETCHED. See folderReady() for what saving through
+  // Chrome does to the name and the folder on a machine with other
+  // downloading extensions on it.
+  if (settings.saveVia !== 'downloads') {
+    const folder = await folderReady().catch(() => null);
+    if (!folder?.ok) {
+      lastFolderIssue = folder?.reason || 'no-folder';
+      const why = lastFolderIssue === 'permission'
+        ? 'The export folder needs permission again.'
+        : 'No export folder has been chosen yet.';
+      setPhase('error', why + ' Open Settings and choose it — nothing is downloaded until then.');
+      state.running = false;
+      persist();
+      throw new Error(why + ' Open Settings and choose the folder.');
+    }
+  }
 
   state.running = true;
   state.error = null;
@@ -696,6 +747,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       case 'openFolder':
         return sendResponse(await revealFolder());
+
+      // The same question runExport asks, asked by the popup before the
+      // picker opens. Two places on purpose: this one saves the user the
+      // trouble of choosing pictures for a run that cannot be saved, and the
+      // one in runExport is what actually guarantees it — the popup is a
+      // convenience and a run can start without it being open.
+      case 'canSave': {
+        const settings = await getSettings();
+        if (settings.saveVia === 'downloads') return sendResponse({ ok: true });
+        const folder = await folderReady().catch(() => null);
+        return sendResponse(folder?.ok ? { ok: true } : {
+          ok: false, reason: folder?.reason || 'no-folder'
+        });
+      }
 
       // Everything the Options page needs for "Copy diagnostics". The
       // formatting lives in lib/diagnostics.js so a node test can read it

@@ -72,6 +72,24 @@ function idbDelete(store, key) {
 }
 
 /**
+ * Is there a folder we can actually write into, right now?
+ *
+ * Asked BEFORE a run starts, not after it has fetched everything. The answer
+ * decides whether the run happens at all — see the preflight in background.js
+ * for why there is no longer a quiet fallback to Chrome's downloads.
+ *
+ * queryPermission only ever checks; re-granting needs a user gesture, which
+ * only the Options page has.
+ */
+async function checkFolder() {
+  const root = await idbGet(STORE, OUTPUT_KEY);
+  if (!root) return { ok: false, reason: 'no-folder' };
+
+  const granted = await root.queryPermission({ mode: 'readwrite' });
+  return granted === 'granted' ? { ok: true } : { ok: false, reason: 'permission' };
+}
+
+/**
  * Walks (and creates) a folder path under the chosen root.
  *
  * Empty segments are dropped rather than passed through: getDirectoryHandle('')
@@ -181,6 +199,15 @@ async function handBack(bytes, segments, filename, reason, error) {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.target !== 'offscreen-writer') return undefined;
+
+  if (msg.action === 'check') {
+    checkFolder()
+      .then(sendResponse)
+      .catch((err) => sendResponse({
+        ok: false, reason: 'error', error: err?.message || String(err)
+      }));
+    return true;
+  }
 
   if (msg.action === 'revoke') {
     try { URL.revokeObjectURL(msg.url); } catch (_) { /* already gone */ }

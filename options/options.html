@@ -14,12 +14,15 @@
         <h2>Where exports are saved</h2>
 
         <p class="note">
-          Choose a folder and the extension writes each export into it itself. Without one,
-          it asks Chrome to save the file — and any other extension that handles downloads
-          can rename it, which is how files end up as <code>download (2).zip</code>. Chrome
-          gives the final say to whichever extension was installed most recently, so that
-          problem comes back on its own whenever one of them updates. Choosing a folder ends
-          it for good.
+          Choose a folder and the extension writes each export into it itself. This is
+          required: without one, an export will not run at all. The reason is that asking
+          Chrome to save the file puts the name up for grabs — any other extension that
+          handles downloads can take it, and the file then lands in plain Downloads under a
+          name like <code>download (2).zip</code> or
+          <code>cc18a2ea-6761-4a14-945b-be74e5b4c2eb.zip</code>, with the folder lost along
+          with the name. Chrome gives the final say to whichever extension was installed
+          most recently, so that problem comes back on its own whenever one of them updates.
+          Writing the file ourselves is the only thing that ends it.
         </p>
 
         <fieldset class="choice">
@@ -40,9 +43,10 @@
             <span>
               <strong>Through Chrome downloads</strong>
               Gives you an <em>Open folder</em> button after each export. The
-              trade is that any other extension holding the downloads
-              permission can rename the file — which is how exports used to end
-              up as <code>download (2).zip</code>.
+              trade is real: any other extension holding the downloads
+              permission can take the name, and the export then lands in plain
+              Downloads under a name Chrome invented. Pick this only if the
+              <em>Open folder</em> button is worth that.
             </span>
           </label>
         </fieldset>

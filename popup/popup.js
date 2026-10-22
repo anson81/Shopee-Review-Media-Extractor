@@ -143,7 +143,18 @@ function isProductPage(tab) {
   }
 }
 
+/**
+ * A run no longer STARTS without a usable folder, so 'no-folder' and
+ * 'permission' can only reach a finished result on a build that predates the
+ * preflight. 'error' is the one that still happens: the folder was there and
+ * writing into it failed anyway, and the bytes went to Chrome rather than be
+ * thrown away after a run that already cost hundreds of requests.
+ */
 function describeFolderIssue(issue) {
+  if (issue === 'error') {
+    return 'Writing into your folder failed, so this went through Chrome instead — ' +
+      'where another extension can rename it and move it.';
+  }
   if (issue === 'no-folder') {
     return 'Saved through Chrome, where another extension can rename it. ' +
       'Choose a folder in Settings to stop that for good.';
@@ -271,7 +282,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       values: { saveVia: 'downloads' }
     });
     $('want-open').hidden = true;
-    setStatus('Switched to Chrome downloads. The next export will have an Open folder button.', 'good');
+    setStatus(
+      'Switched to Chrome downloads — you get an Open folder button, but another ' +
+      'extension can now take the name and the folder. Settings puts it back.',
+      'good'
+    );
   });
 
   $('update-action').addEventListener('click', async () => {
@@ -304,6 +319,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     $('folder-note').hidden = true;
     setStatus('Starting…');
+
+    // ASKED BEFORE THE PICKER OPENS. Without a folder the archive goes out
+    // through Chrome, where any other downloading extension can rename it and
+    // move it — the P50 got cc18a2ea-…zip in plain Downloads that way. Better
+    // to say so now than after the user has picked two hundred pictures.
+    const save = await chrome.runtime.sendMessage({ type: 'canSave' }).catch(() => null);
+    if (save && !save.ok) {
+      setStatus(
+        save.reason === 'permission'
+          ? 'The export folder needs permission again — open Settings and choose it once more.'
+          : 'Choose where exports go first — open Settings and pick a folder.',
+        'error'
+      );
+      return;
+    }
+
     $('find').hidden = true;
     $('stop').hidden = false;
 

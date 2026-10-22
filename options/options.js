@@ -181,7 +181,7 @@ async function refreshOutputFolder() {
 
   if (!handle) {
     status.textContent =
-      'No folder chosen — exports are saved through Chrome, where another extension can rename them.';
+      'No folder chosen — exports will not run until you pick one. Saving through Chrome lets another extension rename the file and move it.';
     status.className = 'status';
     // The label is part of the answer to "have I set this up yet?"
     pick.textContent = 'Choose the exports folder…';

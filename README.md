@@ -77,11 +77,20 @@ it shows the example.
 
 Two options, in **Settings**. They have a real trade-off.
 
-### Into a folder you choose *(default)*
+### Into a folder you choose *(default, and required)*
 
-Nothing can rename your files. Other extensions that handle downloads can
-otherwise rename them mid-save — that is how exports end up called
-`download (2).zip`.
+Nothing can rename your files, because Chrome's download naming never runs.
+
+**You have to pick this folder before your first export.** A run refuses to
+start without one, rather than quietly sending the archive through Chrome.
+That is not fussiness: Chrome asks every extension holding the downloads
+permission about every download, gives the final say to whichever was
+installed most recently, and an extension that answers "no opinion" is still
+answering — it throws away the name we asked for. The export then lands in
+plain Downloads called something like `download (2).zip` or
+`cc18a2ea-6761-4a14-945b-be74e5b4c2eb.zip`, with the folder lost along with
+the name. Which extension wins changes whenever any of them updates, so the
+problem comes and goes on its own.
 
 The cost: **Chrome cannot open that folder for you afterwards.** No extension
 is allowed to open an arbitrary folder. The popup shows the path instead.
@@ -90,8 +99,9 @@ is allowed to open an arbitrary folder. The popup shows the path instead.
 
 You get an **Open folder** button after each export.
 
-The cost: another extension holding the downloads permission can rename the
-file.
+The cost: everything above. Another extension can take the name and the
+folder, and there is no way to stop it. Pick this only if the button is worth
+that.
 
 Either way, each run goes into its own dated folder, so exporting the same
 product twice never overwrites the first one.

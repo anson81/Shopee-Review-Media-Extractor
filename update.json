@@ -1,8 +1,8 @@
 {
-  "version": "1.4.3",
+  "version": "1.4.4",
   "notes": [
-    "The export could fail to save at all on a machine whose chosen folder had lost its permission. When the folder cannot be written, the run falls back to a normal Chrome download - and that fallback called chrome.downloads from the offscreen writer, where the runtime API is the only extensions API Chrome provides. The call threw \"Cannot read properties of undefined (reading download)\" and the archive was lost. The download is started from the service worker again; the writer only prepares it.",
-    "If your exports have been landing through downloads instead of your chosen folder, open Settings and choose the folder once more - Chrome drops that permission on its own and the extension cannot ask for it mid-run."
+    "Exports were landing in plain Downloads under a name like cc18a2ea-6761-4a14-945b-be74e5b4c2eb.zip instead of in your folder. When no folder has been chosen the archive went through Chrome, and Chrome asks every extension that handles downloads about every download - one of them answering \"no opinion\" is still an answer, and it throws away the name we asked for, folder and all. That contest cannot be won.",
+    "So a run now refuses to start until you have chosen a folder in Settings, and says so before you pick anything rather than after. Choosing Through Chrome downloads deliberately still works, with the trade spelled out."
   ],
   "files": [
     "background/background.js",
