@@ -70,7 +70,7 @@ Write-Host "manifest.json: $old -> $Version"
 # extension, and listing them would have the updater download files that do
 # nothing - or 404 for anyone who cloned without them.
 $skip = @('tools', 'docs', '.git', '.github', 'node_modules')
-$skipFiles = @('CLAUDE.md')
+$skipFiles = @('CLAUDE.md', 'CLAUDE.local.md', 'MIGRATION_HANDOFF.md')
 $files = Get-ChildItem -Path $root -Recurse -File |
     Where-Object {
         $rel = $_.FullName.Substring($root.Length + 1).Replace('\', '/')

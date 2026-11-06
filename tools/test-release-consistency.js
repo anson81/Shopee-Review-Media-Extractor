@@ -42,8 +42,9 @@ const ROOT = path.resolve(__dirname, '..');
 const SKIP_DIRS = new Set(['.git', '.github', 'node_modules', 'tools', 'docs']);
 
 // Written for whoever works on this repo, not for Chrome. It must not go into
-// `files` — the installer would write it onto every machine for no reason.
-const SKIP_FILES = new Set(['CLAUDE.md']);
+// `files` — the installer would write it onto every machine for no reason. The
+// local notes from the move to the P50 are git-ignored but still on disk.
+const SKIP_FILES = new Set(['CLAUDE.md', 'CLAUDE.local.md', 'MIGRATION_HANDOFF.md']);
 
 // What the installer can meaningfully write. README.md is included because it
 // is already listed in every update.json — the rule is "what ships is listed",
