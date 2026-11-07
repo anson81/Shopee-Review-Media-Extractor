@@ -132,6 +132,17 @@ function extractAndVerify() {
       continue;
     }
 
+    // An archive that unpacks into files nobody can read has not been
+    // extracted in any useful sense (a Unix origin with a mode of 0 does that).
+    if (process.platform !== 'win32') {
+      const unreadable = entries.map((e) => path.join(out, e.path.split('/').join(path.sep)))
+        .filter((f) => { try { fs.accessSync(f, fs.constants.R_OK); return false; } catch (_) { return true; } });
+      if (unreadable.length) {
+        tried.push(cmd + ' (left ' + unreadable.length + ' file(s) unreadable)');
+        continue;
+      }
+    }
+
     return { extractor: cmd, out, tried };
   }
 
@@ -168,6 +179,18 @@ check('archive has a central directory', centralAt > 0, String(centralAt));
 check('central header sets the UTF-8 flag too',
   (buf.readUInt16LE(centralAt + 8) & 0x0800) !== 0,
   '0x' + buf.readUInt16LE(centralAt + 8).toString(16));
+
+// Made on Unix, not MS-DOS. Ubuntu's unzip converts names in an MS-DOS-made
+// archive from a DOS code page and ignores the UTF-8 flag, so under a normal
+// UTF-8 locale the Chinese/Thai name above came out mangled and this suite
+// failed on the P50. The extractor check only catches that on a machine with
+// that unzip, so the byte is asserted here, everywhere.
+check('central header says the archive was made on Unix',
+  buf[centralAt + 5] === 3,
+  'host byte ' + buf[centralAt + 5] + ' (0 = MS-DOS)');
+check('files carry a readable Unix mode (rw-r--r--)',
+  ((buf.readUInt32LE(centralAt + 38) >>> 16) & 0o777) === 0o644,
+  '0o' + ((buf.readUInt32LE(centralAt + 38) >>> 16) & 0o777).toString(8));
 
 // A small archive must NOT claim ZIP64 sentinels: writing 0xFFFFFFFF into
 // fields that fit made ZIP64-unaware extractors fail outright.
