@@ -1,10 +1,10 @@
 {
-  "version": "1.4.4",
+  "version": "1.4.5",
   "notes": [
-    "Exports were landing in plain Downloads under a name like cc18a2ea-6761-4a14-945b-be74e5b4c2eb.zip instead of in your folder. When no folder has been chosen the archive went through Chrome, and Chrome asks every extension that handles downloads about every download - one of them answering \"no opinion\" is still an answer, and it throws away the name we asked for, folder and all. That contest cannot be won.",
-    "So a run now refuses to start until you have chosen a folder in Settings, and says so before you pick anything rather than after. Choosing Through Chrome downloads deliberately still works, with the trade spelled out."
+    "Exports keep Chinese and Thai file names when unzipped on Linux. They used to come out as junk characters there; Windows and Mac were not affected."
   ],
   "files": [
+    "README.md",
     "background/background.js",
     "content/api.js",
     "content/content.js",
@@ -28,7 +28,6 @@
     "popup/popup.css",
     "popup/popup.html",
     "popup/popup.js",
-    "README.md",
     "update.json"
   ]
 }
