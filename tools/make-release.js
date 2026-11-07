@@ -108,6 +108,16 @@ function manifestReferences(m) {
   return [...refs];
 }
 
+function readConfig(root) {
+  const p = path.join(root, 'tools', 'release-config.json');
+  if (!fs.existsSync(p)) return {};
+  const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+  if (c.notes !== undefined && c.notes !== 'prepend' && c.notes !== 'replace') {
+    fail('tools/release-config.json: "notes" must be "prepend" or "replace".');
+  }
+  return c;
+}
+
 function runTests() {
   const tests = fs.readdirSync(TOOLS).filter((f) => /^test-.*\.js$/.test(f)).sort();
   if (!tests.length) fail('No tests found in tools/ - releasing blind is not a release.');
@@ -167,10 +177,22 @@ function release({ version, notes, dryRun, skipTests }, root = ROOT) {
   const missing = manifestReferences(after).filter((f) => !files.includes(f));
   if (missing.length) fail('manifest.json references files that are not on disk: ' + missing.join(', '));
 
+  // Release notes: some extensions show only this release's notes, others keep
+  // a running history with the newest first. tools/release-config.json says
+  // which ({"notes": "prepend"} keeps the history); without it, the notes are
+  // replaced, as the old .ps1 always did.
   const updatePath = path.join(root, 'update.json');
-  const updateText = JSON.stringify({ version, notes, files }, null, 2) + '\n';
+  const config = readConfig(root);
+  let allNotes = notes;
+  if (config.notes === 'prepend' && fs.existsSync(updatePath)) {
+    const prev = JSON.parse(fs.readFileSync(updatePath, 'utf8')).notes || [];
+    allNotes = notes.concat(prev.filter((n) => !notes.includes(n)));
+  }
+  const updateText = JSON.stringify({ version, notes: allNotes, files }, null, 2) + '\n';
 
   console.log('manifest.json: ' + old + ' -> ' + version);
+  console.log('update.json notes: ' + allNotes.length +
+    (config.notes === 'prepend' ? ' (new ones first, history kept)' : ' (this release only)'));
   console.log('update.json lists ' + files.length + ' files:');
   files.forEach((f) => console.log('  ' + f));
 
@@ -199,7 +221,7 @@ function release({ version, notes, dryRun, skipTests }, root = ROOT) {
   return { old, version, files };
 }
 
-module.exports = { release, listShippedFiles, manifestReferences, cmpVersions, SKIP_DIRS, SKIP_FILES };
+module.exports = { release, listShippedFiles, manifestReferences, cmpVersions, readConfig, SKIP_DIRS, SKIP_FILES };
 
 if (require.main === module) {
   try {

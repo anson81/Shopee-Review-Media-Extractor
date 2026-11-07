@@ -18,7 +18,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { release, listShippedFiles } = require('./make-release.js');
+const { release, listShippedFiles, readConfig } = require('./make-release.js');
 
 const ROOT = path.resolve(__dirname, '..');
 let failures = 0;
@@ -95,7 +95,14 @@ try {
   check('only the version line changed in manifest.json',
     read('manifest.json') === manifestBefore.replace(/("version"\s*:\s*)"[^"]*"/, '$1"' + next + '"'));
   check('update.json version matches', u.version === next, u.version);
-  check('update.json notes are kept as an array', Array.isArray(u.notes) && u.notes.length === 2);
+  const prevNotes = JSON.parse(updateBefore).notes || [];
+  const keep = readConfig(tmp).notes === 'prepend';
+  check('update.json notes are an array, new ones first',
+    Array.isArray(u.notes) && u.notes[0] === 'First note' && u.notes[1] === 'Second note');
+  check(keep ? 'the earlier notes are kept below them (release-config.json says prepend)'
+             : 'only this release\'s notes are listed (no release-config.json, or replace)',
+    keep ? JSON.stringify(u.notes.slice(2)) === JSON.stringify(prevNotes) : u.notes.length === 2,
+    u.notes.length + ' notes');
   check('update.json files are exactly what is on disk',
     JSON.stringify(u.files) === JSON.stringify(listShippedFiles(tmp)));
   check('developer notes are not shipped',
