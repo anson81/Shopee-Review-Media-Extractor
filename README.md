@@ -194,7 +194,7 @@ Both fetch their markup from the real files, so they cannot drift.
 ### Releasing
 
 ```
-.\tools\make-release.ps1 -Version 1.3.2 -Notes "What changed"
+node tools/make-release.js 1.3.2 "What changed"
 git add -A; git commit -m 'v1.3.2'; git push
 ```
 
